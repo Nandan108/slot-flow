@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file contains the core of MyPrivateBoutique's inventory management system,
  * originally written in 2017 and evolved over the following years.
@@ -24,61 +26,62 @@
  * separating state representation, movement planning, constraints, and execution.
  */
 
-
 namespace MPB\Shop\Catalogue\Model;
 
+use MPB\Base\DbTable\RecordSet;
 use MPB\Base\DI;
 use MPB\Utils;
 use MPB\Utils\debug;
-use MPB\Base\DbTable\RecordSet;
 
-class ProductOptStock extends \MPB\Base\DbTable\Record {
-    const AUTO_CREATE_MISSING_OPTIONS = 1;
-    const AUTO_SAVE_CREATED_OPTIONS = 2;
+class ProductOptStock extends \MPB\Base\DbTable\Record
+{
+    public const AUTO_CREATE_MISSING_OPTIONS = 1;
+    public const AUTO_SAVE_CREATED_OPTIONS = 2;
     // to hold reference to product
     public $productOpt;
     public $changeLog = [];
     public static $insufficientQtyErrorOpts;
     public static $fieldsByShort = [
-        'fs' => 'forsale',
+        'fs'  => 'forsale',
         'ifs' => 'init', // 'initial for sale' stock, used for consignment products to limit the quantity that can be moved to 'forsale'
-        'sd' => 'sold',
+        'sd'  => 'sold',
     ];
 
-    static protected $tableInfo = array(
-        'name' => 'shop_product_opt_stock',
-        'key' => 'id',
-        'foreign_keys' => ['opt_id','loc_id'],
-        'fields' =>  array(
-            'id'                => array('INT(10) unsigned', 'signed' => false, 'null' => true, 'auto_increment' => true),
-            'opt_id'            => array('INT(10) unsigned'),
-            'loc_id'            => array('TINYINT(10) UNSIGNED'),
-            'forsale'           => array('SMALLINT(6) NOT NULL'),
-            'sold'              => array('SMALLINT(6) NOT NULL'),
-            'incart'            => array('SMALLINT(6) NOT NULL'),
-            'init'              => array('SMALLINT(6) NOT NULL'),
-        ),
-        'relations' => array(
-            'productOpt' => array(
-                'type' => 'manyToOne',
+    protected static $tableInfo = [
+        'name'         => 'shop_product_opt_stock',
+        'key'          => 'id',
+        'foreign_keys' => ['opt_id', 'loc_id'],
+        'fields'       => [
+            'id'                => ['INT(10) unsigned', 'signed' => false, 'null' => true, 'auto_increment' => true],
+            'opt_id'            => ['INT(10) unsigned'],
+            'loc_id'            => ['TINYINT(10) UNSIGNED'],
+            'forsale'           => ['SMALLINT(6) NOT NULL'],
+            'sold'              => ['SMALLINT(6) NOT NULL'],
+            'incart'            => ['SMALLINT(6) NOT NULL'],
+            'init'              => ['SMALLINT(6) NOT NULL'],
+        ],
+        'relations' => [
+            'productOpt' => [
+                'type'  => 'manyToOne',
                 'class' => '\MPB\Shop\Catalogue\Model\ProductOpt', // Product variants table
-                'key' => 'opt_id',
-            )
-        ),
-    );
+                'key'   => 'opt_id',
+            ],
+        ],
+    ];
 
     /**
      * returns stock available for purchase at a given $zone in the form of {
      *   totForsale: number,
      *   rows: RecordSet<ProductOptStock>,
-     * }
+     * }.
      */
-    public static function getAvailableStock($opt_id, $zone) {
+    public static function getAvailableStock($opt_id, $zone)
+    {
         // get list of stock rows corresponding to opt_id
         // that are visible in $zone
         $rows = new RecordSet(array_map(
-          function ($row) { return new ProductOptStock($row); },
-          self::db()->execute("
+            function ($row) { return new ProductOptStock($row); },
+            self::db()->execute("
             SELECT pos.*
             FROM shop_product_opt_stock pos
                 JOIN shop_product_stock_locations psl ON pos.loc_id = psl.id
@@ -86,14 +89,15 @@ class ProductOptStock extends \MPB\Base\DbTable\Record {
                 AND pos.forsale > 0
                 AND psl.{$zone}_priority > 0
             ORDER BY psl.{$zone}_priority
-          ")->getRows()
+          ")->getRows(),
         ));
 
         // get sum of stock amount available for purchase in $zone
-        for ($i = $totForsale = 0; $i < count($rows); $i++)
+        for ($i = $totForsale = 0; $i < count($rows); ++$i) {
             $totForsale += $rows[$i]->forsale;
+        }
 
-        return (object)compact('totForsale','rows');
+        return (object) compact('totForsale', 'rows');
     }
 
     /**
@@ -109,7 +113,7 @@ class ProductOptStock extends \MPB\Base\DbTable\Record {
      * moveUnMissing(null => eu_sd[!>ifs], null => eu_sd[!>ifs], null => ch_sd[!>ifs], null => sup_sd[!>ifs], overflow: fail)
      * moveReturn(null => eu_fs)
      * moveUnReturn(eu_fs => null)
-     * moveOrder(eu_sd => null)
+     * moveOrder(eu_sd => null).
      *
      * $optsAndQuantities : array of [$prod: ProductOpt, $qtty: number]
      * $failOnUnspentQty: boolean (default to false)
@@ -121,87 +125,98 @@ class ProductOptStock extends \MPB\Base\DbTable\Record {
      *    'nearestFirst' => boolean, defaults to (fromState == sd)
      *    '' => truthy (default) or falsy
      */
-
-    public static function getLocalLoc() {
-      return array_pop(array_keys(ProductStockLocation::getByCode(null, DI::get('locale')->zone)));
+    public static function getLocalLoc()
+    {
+        return array_pop(array_keys(ProductStockLocation::getByCode(null, DI::get('locale')->zone)));
     }
 
-    public static function logMovements($moveTypeIdOrName, $adminId, $refId, $changedStock) {
+    public static function logMovements($moveTypeIdOrName, $adminId, $refId, $changedStock)
+    {
         $stockStates = ['forsale' => 'fs', 'sold' => 'sd']; // we don't log changes to 'ifs' field
-        if (!$changedStock) return;
+        if (!$changedStock) {
+            return;
+        }
 
-        if (!is_numeric($moveTypeId = $moveTypeIdOrName))
+        if (!is_numeric($moveTypeId = $moveTypeIdOrName)) {
             $moveTypeId = ProductStockMovetype::getIdByName($moveTypeIdOrName);
+        }
 
-        # distribute movements over their $opts->stock[]
+        // distribute movements over their $opts->stock[]
         $opts = $changedStock->getProductOpt();
         $products = $opts->getProduct();
-        foreach ($changedStock as $cs)
+        foreach ($changedStock as $cs) {
             $cs->productOpt->stock[] = $cs;
+        }
 
         $logEntries = [];
         foreach ($opts as $opt) {
             foreach ($opt->stock as $stockLine) {
                 $changed = $stockLine->isDirty(true);
-                # for each field (forsale and sold) of each stock of each opt
+                // for each field (forsale and sold) of each stock of each opt
                 foreach ($stockStates as $dbField => $stateCode) {
-                    # if the value was changed
+                    // if the value was changed
                     if ($changed[$dbField] && ($diff = $changed[$dbField][1] - $changed[$dbField][0])) {
                         $logEntries[] = $stockLine->changeLog[] = ProductStockMovelog::getNew([
-                            'type_id' => $moveTypeId, // needs conversion
-                            'ref_id' => $refId ?: 0,
-                            'actor_id' => $adminId,
-                            'product_id' => $opt->product_id,
-                            'opt_key' => $opt->opt_key,
+                            'type_id'     => $moveTypeId, // needs conversion
+                            'ref_id'      => $refId ?: 0,
+                            'actor_id'    => $adminId,
+                            'product_id'  => $opt->product_id,
+                            'opt_key'     => $opt->opt_key,
                             'sizetype_id' => $opt->product->sizetype_id,
-                            'loc_id' => $stockLine->loc_id,
-                            'state' => $stateCode,
-                            'qtty' => $diff,
-                            'balance' => $changed[$dbField][1],
+                            'loc_id'      => $stockLine->loc_id,
+                            'state'       => $stateCode,
+                            'qtty'        => $diff,
+                            'balance'     => $changed[$dbField][1],
                         ]);
                     }
                 }
-                # mark the FaCategory product cache to be refreshed
+                // mark the FaCategory product cache to be refreshed
                 if (isset($changed['forsale']) && min($changed['forsale']) < 2) {
                     $cacheRefreshPids[$opt->product_id] = true;
                 }
             }
         }
-        # save logEntries if we have any
-        if ($logEntries) $logEntries = Recordset::getNew($logEntries)->saveAll();
-        # mark products as updated
+        // save logEntries if we have any
+        if ($logEntries) {
+            $logEntries = RecordSet::getNew($logEntries)->saveAll();
+        }
+        // mark products as updated
         $products->setAll(['updateTime' => date('Y-m-d H:i:s')])->saveAll();
 
-        # refresh FaCategory cache if necessary
-        if ($cacheRefreshPids) Category::refreshCache(['product_ids' => array_keys($cacheRefreshPids ?? [])]);
+        // refresh FaCategory cache if necessary
+        if ($cacheRefreshPids) {
+            Category::refreshCache(['product_ids' => array_keys($cacheRefreshPids ?? [])]);
+        }
     }
 
     /**
      * input: &$data = [[ $optIdx => $opt | $optId | [$prodId, $opt_key] ]]
      * output: &$data = [[ $optIdx => $opt ]]
-     * returns Recordset($opts);
+     * returns Recordset($opts);.
      */
-    public static function prepareOpts(&$data, $optIdx=0, $flags=null) {
+    public static function prepareOpts(&$data, $optIdx = 0, $flags = null)
+    {
         $opts = Utils::pluck($data, $optIdx);
         $flags = $flags ?? self::AUTO_CREATE_MISSING_OPTIONS | self::AUTO_SAVE_CREATED_OPTIONS;
 
-        # convert opt_id to opt
-        if ($optIds = array_filter($opts, function($id) { return is_numeric($id); })) {
-            $optsById = ProductOpt::find(['id' => ['IN', implode(',',$optIds)]])->recordsByKey();
+        // convert opt_id to opt
+        if ($optIds = array_filter($opts, function ($id) { return is_numeric($id); })) {
+            $optsById = ProductOpt::find(['id' => ['IN', implode(',', $optIds)]])->recordsByKey();
             foreach ($optIds as $i => $optId) {
-                if (!($opt = $optsById[$optId]))
+                if (!($opt = $optsById[$optId])) {
                     throw new \Exception("Unable to move stock for ProductOpt #$optId (option not found)");
+                }
                 $data[$i][$optIdx] = $opt;
             }
         }
 
-        # convert [prodId, optKey] to opt.
-        if ($prodIdAndKeys = array_filter($opts, function($id) { return is_array($id); })) {
+        // convert [prodId, optKey] to opt.
+        if ($prodIdAndKeys = array_filter($opts, function ($id) { return is_array($id); })) {
             $db = self::db();
             $tmpTableName = '_prepareOpts_'.uniqid();
-            $values = '('.implode('),(', array_map(function($prodIdAndKey) use ($db) {
-                    return ((int)$prodIdAndKey[0]).', '.$db->Quote($prodIdAndKey[1]);
-                }, $prodIdAndKeys)).')';
+            $values = '('.implode('),(', array_map(function ($prodIdAndKey) use ($db) {
+                return ((int) $prodIdAndKey[0]).', '.$db->Quote($prodIdAndKey[1]);
+            }, $prodIdAndKeys)).')';
             $db->execute("CREATE TEMPORARY TABLE $tmpTableName (product_id int, opt_key varchar(16)) COLLATE utf8mb4_unicode_ci ENGINE=MEMORY");
             $db->execute("INSERT INTO $tmpTableName VALUES $values");
             $foundOpts = ProductOpt::find("(product_id, opt_key) in (SELECT * from $tmpTableName)");
@@ -209,15 +224,17 @@ class ProductOptStock extends \MPB\Base\DbTable\Record {
                 $optsByProdIdAndOptKey[$opt->product_id.$opt->opt_key] = $opt;
             }
             foreach ($prodIdAndKeys as $i => $prodIdAndKey) {
-                if (!($opt = $optsByProdIdAndOptKey[implode('',$prodIdAndKey)])) {
+                if (!($opt = $optsByProdIdAndOptKey[implode('', $prodIdAndKey)])) {
                     if ($flags & self::AUTO_CREATE_MISSING_OPTIONS) {
-                        $opt = $optsByProdIdAndOptKey[implode('',$prodIdAndKey)] = (new ProductOpt([
-                            'product_id' => $prodIdAndKey[0], 'opt_key' => $prodIdAndKey[1]
+                        $opt = $optsByProdIdAndOptKey[implode('', $prodIdAndKey)] = (new ProductOpt([
+                            'product_id' => $prodIdAndKey[0], 'opt_key' => $prodIdAndKey[1],
                         ]));
-                        if ($flags & self::AUTO_SAVE_CREATED_OPTIONS)
+                        if ($flags & self::AUTO_SAVE_CREATED_OPTIONS) {
                             $opt->save();
-                    } else
+                        }
+                    } else {
                         throw new \Exception("Unable to move stock for ProductOpt #$prodIdAndKey[0] (option not found)");
+                    }
                 }
                 $data[$i][$optIdx] = $opt;
             }
@@ -226,56 +243,65 @@ class ProductOptStock extends \MPB\Base\DbTable\Record {
         return new RecordSet(Utils::pluck($data, $optIdx));
     }
 
-    public static function getMovePath($fromState, $toState, $priorityZone, $nearestFirst=false, $stockType=null) {
+    public static function getMovePath($fromState, $toState, $priorityZone, $nearestFirst = false, $stockType = null)
+    {
         $locs = ProductStockLocation::getByCode(null, $priorityZone);
         // if a stock type (C or FP) is specified, keep only those locs
-        if ($stockType !== null) {
-            $locs = array_filter($locs, function ($loc) use($stockType) {
+        if (null !== $stockType) {
+            $locs = array_filter($locs, function ($loc) use ($stockType) {
                 // return ($loc->type ?: $stockType) === $stockType;
                 return $loc->type === $stockType;
             });
         }
 
         $locPath = array_keys($locs);
-        if ($nearestFirst) $locPath = array_reverse($locPath);
+        if ($nearestFirst) {
+            $locPath = array_reverse($locPath);
+        }
         foreach ($locPath as $loc) {
             $movePath[$loc] = $move = ['from' => [$loc, $fromState], 'to' => [$loc, $toState]];
         }
+
         return $movePath;
     }
 
     /**
      * takes a ProductOpt recordset and returns a
-     * function ($opt_id, $stockLocKey) => existing stock line or new ProductOptStock()
+     * function ($opt_id, $stockLocKey) => existing stock line or new ProductOptStock().
      */
-    public static function makeStockLineGetter($opts, $newStockDefaultVal = 0) {
+    public static function makeStockLineGetter($opts, $newStockDefaultVal = 0)
+    {
         $optStock = $opts->getStock()->recordsGroupedByKey('opt_id');
-        foreach ($optStock as $opt_id => &$s) $s = $s->recordsByKey('loc_id');
+        foreach ($optStock as $opt_id => &$s) {
+            $s = $s->recordsByKey('loc_id');
+        }
 
         $locsByKey = ProductStockLocation::getByCode() + ProductStockLocation::getById();
         $newStockDefaults = [
             'forsale' => $newStockDefaultVal,
-            'sold' => $newStockDefaultVal,
-            'init' => $newStockDefaultVal,
+            'sold'    => $newStockDefaultVal,
+            'init'    => $newStockDefaultVal,
         ];
-        $getStockLine = function($opt_id, $locKey)
-            use ($locsByKey, &$optStock, $newStockDefaults) {
+        $getStockLine = function ($opt_id, $locKey) use ($locsByKey, &$optStock, $newStockDefaults) {
             $loc_id = $locsByKey[$locKey]->id;
             if (!($stock = $optStock[$opt_id][$loc_id] ?? null)) {
                 return $optStock[$opt_id][$loc_id] =
-                    self::getNew(compact('opt_id','loc_id'))
+                    self::getNew(compact('opt_id', 'loc_id'))
                         ->set($newStockDefaults);
             }
+
             return $stock;
         };
+
         return $getStockLine;
     }
 
     /**
      * expects $optsQtyLocType == array of [$opt|$optId, $quantity, $locCode|$locId, 'fs'|'sd'|'ifs']
-     * $additionMode
+     * $additionMode.
      */
-    public static function setStock($optsQtyLocType, $moveTypeName, $refId=0, $admin_id=null, $additionMode=false) {
+    public static function setStock($optsQtyLocType, $moveTypeName, $refId = 0, $admin_id = null, $additionMode = false)
+    {
         $getStockLine = self::makeStockLineGetter(self::prepareOpts($optsQtyLocType));
 
         $changedStock = new RecordSet();
@@ -284,7 +310,7 @@ class ProductOptStock extends \MPB\Base\DbTable\Record {
             $stock = $getStockLine($opt->id, $locKey);
             $field = self::$fieldsByShort[$type];
             $newQty = $qty + ($additionMode ? $stock->$field : 0);
-            if (($stock->$field ?? 0) != $newQty) {
+            if (($stock->$field ?? 0) !== $newQty) {
                 $stock->$field = $newQty;
                 $changedStock->records[] = $stock;
             }
@@ -299,14 +325,15 @@ class ProductOptStock extends \MPB\Base\DbTable\Record {
         return $changedStock;
     }
 
-    public static function moveReceivePO($optsAndQuantities, $type, $toZone, $poId, $reverse) {
-        if ($toZone == 'ch') {
-            if ($type == 'C') {
+    public static function moveReceivePO($optsAndQuantities, $type, $toZone, $poId, $reverse)
+    {
+        if ('ch' === $toZone) {
+            if ('C' === $type) {
                 $movePath = [
                     ['from' => ['supC', 'sd'], 'to' => ['chC',  'sd']],
                     // when we received extra stock not already booked by a
                     // customer, move it to "for sale"
-                    [                          'to' => ['chC', 'fs']],
+                    ['to' => ['chC', 'fs']],
                 ];
             } else {
                 $movePath = [
@@ -315,15 +342,15 @@ class ProductOptStock extends \MPB\Base\DbTable\Record {
                     // stock that was not bought yet: supFP_fs => chFP_fs
                     ['from' => ['supFP', 'fs'], 'to' => ['chFP', 'fs']],
                     // any additional received quantities also go to chFP_fs
-                    [                           'to' => ['chFP', 'fs']],
+                    ['to' => ['chFP', 'fs']],
                 ];
             }
         } else { // $toZone == 'eu'
             $movePath = [
-                ['from' => ["ch$type", 'sd'], 'to' => ["eu", 'sd']],
+                ['from' => ["ch$type", 'sd'], 'to' => ['eu', 'sd']],
                 // extra quantities should never happen in an EU PO
                 // ... but we'll allow for it anyways
-                [                        'to' => ["eu", 'fs']],
+                ['to' => ['eu', 'fs']],
             ];
         }
 
@@ -336,29 +363,32 @@ class ProductOptStock extends \MPB\Base\DbTable\Record {
         }
 
         $stockMovements = self::moveStock($optsAndQuantities, $movePath, 'PO', $poId, ['newStockHasZeroQty'=>true]);
+
         return $stockMovements;
     }
 
-    public static function moveBooked(&$optsAndQuantities, $accountId, $zone, $failOnUnspentQty, $orderId) {
+    public static function moveBooked(&$optsAndQuantities, $accountId, $zone, $failOnUnspentQty, $orderId)
+    {
         return self::moveStock(
             optsAndQuantities: $optsAndQuantities,
             movePath: self::getMovePath('fs', 'sd', $zone, true),
             moveTypeName: 'SO',
             refId: $orderId,
             options: [
-                'log_adminId' => 1,
-                'failOnUnspentQty' => $failOnUnspentQty,
-                'newStockHasZeroQty' => true,
+                'log_adminId'         => 1,
+                'failOnUnspentQty'    => $failOnUnspentQty,
+                'newStockHasZeroQty'  => true,
                 'setStockMovesOnOpts' => true,
-            ]
+            ],
         );
     }
 
     // Can be used to cancel boutique purchases anytime
     // Can be used for consignment products ONLY while sale is ongoing (with limitFsByIfs)
-    public static function moveCancel(&$optsAndQuantitiesByStockType, $zone, $liveConsignment, $unCancel, $logId, $EUPoStatus) {
+    public static function moveCancel(&$optsAndQuantitiesByStockType, $zone, $liveConsignment, $unCancel, $logId, $EUPoStatus)
+    {
         list($from, $to) = $unCancel ? ['fs', 'sd'] : ['sd', 'fs'];
-        $moveOptions = ['newStockHasZeroQty' => true, 'setStockMovesOnOpts' => true/*, 'limitFsByIfs' => true*/];
+        $moveOptions = ['newStockHasZeroQty' => true, 'setStockMovesOnOpts' => true/* , 'limitFsByIfs' => true */];
         $cancelMoves = new RecordSet();
 
         foreach ($optsAndQuantitiesByStockType as $stockType => &$optsAndQuantities) {
@@ -370,12 +400,14 @@ class ProductOptStock extends \MPB\Base\DbTable\Record {
                 // product. A is sold again, but from CH stock, then canceled. The cancelation would move from sup_sd 1st.
             } else {
                 // if products are in an EU
-                if ($zone == 'eu' && $EUPoStatus > 0) {
+                if ('eu' === $zone && $EUPoStatus > 0) {
                     // if PO and it's not arrived, don't move stock (not allowed)
-                    if ($EUPoStatus < 5) return false;
+                    if ($EUPoStatus < 5) {
+                        return false;
+                    }
                     // otherwise (goods are received), move EU stock, don't touch CH or SUP stock
                     $movePath = $unCancel
-                        ? ['eu' => ['from' => ['eu', 'sd'], 'to' => ['eu','fs']]]
+                        ? ['eu' => ['from' => ['eu', 'sd'], 'to' => ['eu', 'fs']]]
                         : ['eu' => ['from' => ['eu', 'fs'], 'to' => ['eu', 'sd']]];
                 } elseif (isset($movePath['supC'])) {
                     // Special case when handling a cancel of sup stock outside of live consignment sale
@@ -391,14 +423,17 @@ class ProductOptStock extends \MPB\Base\DbTable\Record {
             }
             $un = $unCancel ? 'un' : '';
             $newMoves = self::moveStock($optsAndQuantities, $movePath, $un.'cancel', $logId, $moveOptions);
-            if ($newMoves) $cancelMoves->pushRecordset($newMoves);
+            if ($newMoves) {
+                $cancelMoves->pushRecordset($newMoves);
+            }
         }
 
         return $cancelMoves;
     }
 
     // Remove from 'sd', supplier-first, when adding a 'missing' or 'defect'
-    public static function moveFromSold(&$optsAndQuantitiesByStockType, $zone, $reverse, $refId) {
+    public static function moveFromSold(&$optsAndQuantitiesByStockType, $zone, $reverse, $refId)
+    {
         list($from, $to) = $reverse ? [null, 'sd'] : ['sd', null];
         $un = $reverse ? 'un' : '';
         $moveOptions = ['newStockHasZeroQty' => true, 'setStockMovesOnOpts' => true];
@@ -406,28 +441,35 @@ class ProductOptStock extends \MPB\Base\DbTable\Record {
         foreach ($optsAndQuantitiesByStockType as $stockType => &$optsAndQuantities) {
             $movePath = self::getMovePath($from, $to, $zone, $reverse, $stockType);
             $newMoves = self::moveStock($optsAndQuantities, $movePath, $un.'missing', $refId, $moveOptions);
-            if ($newMoves) $stockMovements->pushRecordset($newMoves);
+            if ($newMoves) {
+                $stockMovements->pushRecordset($newMoves);
+            }
         }
+
         return $stockMovements;
     }
 
     // Accepted return where products can go back to stock
-    public static function moveReturn(&$optsAndQuantitiesByStockType, $zone, $reverse, $logId) {
+    public static function moveReturn(&$optsAndQuantitiesByStockType, $zone, $reverse, $logId)
+    {
         $moveOptions = ['newStockHasZeroQty' => true, 'setStockMovesOnOpts' => true];
         $direction = $reverse ? 'from' : 'to';
         $un = $reverse ? 'un' : '';
         $stockMovements = new RecordSet();
         foreach ($optsAndQuantitiesByStockType as $stockType => &$optsAndQuantities) {
-            $locCode = $zone === 'eu' ? 'eu' : "ch$stockType";
+            $locCode = 'eu' === $zone ? 'eu' : "ch$stockType";
             $movePath = [[$direction => [$locCode, 'fs']]];
-            $newMoves = self::moveStock($optsAndQuantities, $movePath, $un."return", (int)$logId, $moveOptions);
-            if ($newMoves) $stockMovements->pushRecordset($newMoves);
+            $newMoves = self::moveStock($optsAndQuantities, $movePath, $un.'return', (int) $logId, $moveOptions);
+            if ($newMoves) {
+                $stockMovements->pushRecordset($newMoves);
+            }
         }
+
         return $stockMovements;
     }
 
-    //
-    public static function moveShip($optIdsAndQuantitiesByLocCode, $reverse, $logId) {
+    public static function moveShip($optIdsAndQuantitiesByLocCode, $reverse, $logId)
+    {
         $allStockMovements = new RecordSet();
         $un = $reverse ? 'un' : '';
 
@@ -435,10 +477,11 @@ class ProductOptStock extends \MPB\Base\DbTable\Record {
             $direction = $reverse ? 'to' : 'from';
             $movePath = [[$direction => [$locCode, 'sd']]];
             $moveOptions = ['failOnUnspentQty' => true, 'newStockHasZeroQty' => true];
-            $stockMovements = self::moveStock($optIdsAndQuantities, $movePath, $un."shipping", (int)$logId, $moveOptions);
+            $stockMovements = self::moveStock($optIdsAndQuantities, $movePath, $un.'shipping', (int) $logId, $moveOptions);
 
-            if (self::$insufficientQtyErrorOpts)
+            if (self::$insufficientQtyErrorOpts) {
                 return false;
+            }
 
             $allStockMovements->pushRecordSet($stockMovements);
         }
@@ -450,19 +493,22 @@ class ProductOptStock extends \MPB\Base\DbTable\Record {
      * will move existing stock from one {loc}_{state} to another (e.g. $from="sup_sd" $to="ch_sd")
      * Only actually existing stock quantities will be moved. No cascade will happen.
      */
-    public static function fullMove($optsOrOptIds, $from, $to = null, $moveTypeName = 'massManual') {
+    public static function fullMove($optsOrOptIds, $from, $to = null, $moveTypeName = 'massManual')
+    {
         list($fromLoc, $fromState) = explode('_', $from);
         list($toLoc, $toState) = explode('_', $to);
-        $optsAndQuantities = array_map(function($poid) { return [$poid]; }, $optsOrOptIds);
+        $optsAndQuantities = array_map(function ($poid) { return [$poid]; }, $optsOrOptIds);
         $movePath = [['from' => [$fromLoc, $fromState], 'to' => [$toLoc, $toState]]];
         $moveOptions = ['useSourceQty' => true];
         $stockMovements = self::moveStock($optsAndQuantities, $movePath, $moveTypeName, 0, $moveOptions);
+
         return $stockMovements;
     }
 
-    public static function intersaleReset($optsOrOptIds) {
+    public static function intersaleReset($optsOrOptIds)
+    {
         foreach (['fs', 'ifs'] as $fromState) {
-            $optsAndQuantities = array_map(function($poid) { return [$poid]; }, $optsOrOptIds);
+            $optsAndQuantities = array_map(function ($poid) { return [$poid]; }, $optsOrOptIds);
             $movePath = [['from' => ['supC', $fromState], 'to' => null]];
             $moves = self::moveStock($optsAndQuantities, $movePath, 'intersaleMoveReset', 0, ['useSourceQty' => true]);
             $moves->saveAll();
@@ -470,13 +516,16 @@ class ProductOptStock extends \MPB\Base\DbTable\Record {
     }
 
     // $optsAndQuantities may be an array of [ProductOpt, quantity] or [opt_id, quantity]
-    public static function moveStock(&$optsAndQuantities, $movePath, $moveTypeName, $refId, $options = []) {
-        if (!$optsAndQuantities) return new RecordSet();
+    public static function moveStock(&$optsAndQuantities, $movePath, $moveTypeName, $refId, $options = [])
+    {
+        if (!$optsAndQuantities) {
+            return new RecordSet();
+        }
 
         // if we have [opt_id, quantity], convert to [ProductOpt, quantity]
         $opts = self::prepareOpts($optsAndQuantities);
 
-        //debug::print_r(compact('allStock'));
+        // debug::print_r(compact('allStock'));
         $newStockLines = [];
 
         $useSourceQty = $options['useSourceQty'] ?? false;
@@ -505,9 +554,11 @@ class ProductOptStock extends \MPB\Base\DbTable\Record {
         foreach ($optsAndQuantities as &$optAndQty) {
             list($opt, $startQty) = $optAndQty; // $opt and $qty
 
-            if (!($qty = $startQty) && !$useSourceQty) continue; // nothing to move
+            if (!($qty = $startQty) && !$useSourceQty) {
+                continue;
+            } // nothing to move
 
-            $stockKey = function($s) { return $s->opt_id.'-'.$s->loc_id; };
+            $stockKey = function ($s) { return $s->opt_id.'-'.$s->loc_id; };
             foreach ($movePath as $mp) {
                 unset($fromStock, $from, $toStock, $to);
 
@@ -515,7 +566,9 @@ class ProductOptStock extends \MPB\Base\DbTable\Record {
                 if ($fromLoc && $fromState) {
                     $fromStock = $getStockLine($opt->id, $fromLoc);
                     $fromField = self::$fieldsByShort[$fromState];
-                    if (!$fromField) throw new \Exception("unknown stock state: \"$fromState\"");
+                    if (!$fromField) {
+                        throw new \Exception("unknown stock state: \"$fromState\"");
+                    }
                 }
 
                 // when moving from a newly created stock, assume it contains
@@ -526,54 +579,67 @@ class ProductOptStock extends \MPB\Base\DbTable\Record {
                     $movable = $useSourceQty
                         ? $fromStock->$fromField
                         : min($fromStock->$fromField, $qty);
-                } else
+                } else {
                     $movable = $useSourceQty ? 0 : $qty;
+                }
 
-                if (!$movable) continue;
+                if (!$movable) {
+                    continue;
+                }
 
                 list($toLoc, $toState) = $mp['to'] ?? [null, null];
                 if ($toLoc && $toState) {
                     $toStock = $getStockLine($opt->id, $toLoc);
-                    if (!($toField = self::$fieldsByShort[$toState]))
+                    if (!($toField = self::$fieldsByShort[$toState])) {
                         throw new \Exception("unknown stock state: \"$toState\"");
-                    if ($limitFsByIfs)
+                    }
+                    if ($limitFsByIfs) {
                         $movable = max(0, min($movable, $toStock->init - $toStock->$toField));
+                    }
                 }
 
-                if (!$movable) continue;
+                if (!$movable) {
+                    continue;
+                }
 
                 if ($fromStock) {
                     $fromStock->$fromField -= $movable;
                     $changedStock[$stockKey($fromStock)] = $fromStock;
-                    if ($setStockMovesOnOpts)
+                    if ($setStockMovesOnOpts) {
                         $optAndQty['moves'][$stockKey($fromStock)] = $fromStock;
-                };
+                    }
+                }
                 if ($toStock) {
                     $toStock->$toField += $movable;
                     $changedStock[$stockKey($toStock)] = $toStock;
-                    if ($setStockMovesOnOpts)
+                    if ($setStockMovesOnOpts) {
                         $optAndQty['moves'][$stockKey($toStock)] = $toStock;
-                };
+                    }
+                }
 
-                if (!($qty -= $movable)) break;
+                if (!($qty -= $movable)) {
+                    break;
+                }
             }
 
             if ($qty && $failOnUnspentQty) {
                 $opt_key = $opt->opt_key;
                 $restQty = $qty;
                 $movableQty = $startQty - $qty;
-                self::$insufficientQtyErrorOpts[$opt->id] = compact('opt_key','movableQty','restQty','opt');
+                self::$insufficientQtyErrorOpts[$opt->id] = compact('opt_key', 'movableQty', 'restQty', 'opt');
             }
         }
 
-        if (self::$insufficientQtyErrorOpts) return false;
+        if (self::$insufficientQtyErrorOpts) {
+            return false;
+        }
 
         if (!($adminId = $options['log_adminId'])) {
             $admin = DI::get('adminSession')->getAccount();
             $adminId = $admin ? $admin->id : 1;
         }
 
-        $changedStock = new Recordset($changedStock);
+        $changedStock = new RecordSet($changedStock);
 
         self::logMovements($moveTypeName, $adminId, $refId, $changedStock);
 
