@@ -1,0 +1,36 @@
+{
+    "name": "nandan108/slot-flow",
+    "type": "library",
+    "license": "MIT",
+    "autoload": {
+        "psr-4": {
+            "Nandan108\\SlotFlow\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Tests\\": "tests/"
+        }
+    },
+    "require": {
+        "php": "^8.3"
+    },
+    "require-dev": {
+        "php": "^8.3",
+        "phpunit/phpunit": "^10.0",
+        "vimeo/psalm": "^6.12",
+        "friendsofphp/php-cs-fixer": "^3.92"
+    },
+    "authors": [
+        {
+            "name": "Samuel de Rougemont",
+            "email": "nandan108@gmail.com"
+        }
+    ],
+    "scripts": {
+        "cs-fix": "./vendor/bin/php-cs-fixer fix --allow-risky=yes --diff",
+        "psalm": "./vendor/bin/psalm",
+        "test": "./vendor/bin/phpunit",
+        "testAndCover": "./vendor/bin/phpunit --coverage-text --coverage-html coverage"
+    }
+}
