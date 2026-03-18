@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Nandan108\SlotFlow;
 
+use Nandan108\SlotFlow\Contracts\Constraint;
+
 final class MovementPlan
 {
     /**

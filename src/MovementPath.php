@@ -36,7 +36,7 @@ final class MovementPath
     public function reverse(bool $flipEdges = true): self
     {
         $clone = clone $this;
-        $clone->edges = array_reverse($clone->edges, true);
+        $clone->edges = array_reverse($clone->edges, false);
 
         if ($flipEdges) {
             foreach ($clone->edges as $i => $edge) {
@@ -62,8 +62,8 @@ final class MovementPath
         usort(
             $clone->edges,
             static function (MovementEdge $a, MovementEdge $b) use ($dimension, $rankByValue): int {
-                $aFrom = $a->from?->dimension($dimension);
-                $bFrom = $b->from?->dimension($dimension);
+                $aFrom = $a->from->dimension($dimension);
+                $bFrom = $b->from->dimension($dimension);
 
                 $aRank = null !== $aFrom && array_key_exists($aFrom, $rankByValue)
                     ? $rankByValue[$aFrom]

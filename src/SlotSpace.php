@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Nandan108\SlotFlow;
 
+use Nandan108\SlotFlow\Contracts\SlotKeyCodec;
+
 final class SlotSpace
 {
     /** @var array<non-empty-string, list<non-empty-string>> */
@@ -15,226 +17,266 @@ final class SlotSpace
     /** @var array<non-empty-string, array<non-empty-string, list<non-empty-string>>> */
     private array $dimensionExpansions = [];
 
-    /** @var \Closure(array<non-empty-string, string>): non-empty-string */
-    public \Closure $serializer;
-    /** @var \Closure(string): array<non-empty-string, string> */
-    public \Closure $deserializer;
+    public SlotKeyCodec $codec;
 
-    /** @var array<string, SlotKey> */
+    /** @var array<non-empty-string, SlotKey> */
     private array $slotsByKey = [];
 
+    private SlotKey $nilSlot;
+
     /**
-     * @param array<non-empty-string, list<non-empty-string>>              $dimensions
-     * @param ?\Closure(array<non-empty-string, string>): non-empty-string $serializer
-     * @param ?\Closure(string): array<non-empty-string, string>           $deserializer
+     * @var array<non-empty-string, MovementEdge[]>
+     */
+    public array $namedPaths = [];
+
+    /**
+     * Per slot key => the list of rules needed to generate the valid edges from that slot to other slots.
+     *
+     * @var array<non-empty-string, EdgeRule[]>
+     */
+    private array $edgeRulesByOriginSlot = [];
+
+    /**
+     * @var array<non-empty-string, array<non-empty-string, MovementEdge>>
+     */
+    private array $outgoingEdgeByOriginSlot = [];
+
+    /**
+     * @param array<non-empty-string, list<non-empty-string>> $dimensions
+     * @param ?class-string<SlotKeyCodec>                     $codecClass
      */
     public static function define(
         array $dimensions,
-        ?callable $serializer = null,
-        ?callable $deserializer = null,
-        string $serializeSeparator = '.',
+        ?string $codecClass = null,
     ): self {
-        return new self(
-            $dimensions,
-            $serializer,
-            $deserializer,
-            $serializeSeparator,
-        );
+        return new self($dimensions, $codecClass);
     }
 
     /**
-     * @param array<non-empty-string, list<non-empty-string>>              $dimensions
-     * @param ?\Closure(array<non-empty-string, string>): non-empty-string $serializer
-     * @param ?\Closure(string): array<non-empty-string, string>           $deserializer
+     * @param array<non-empty-string, list<non-empty-string>> $dimensions
+     * @param ?class-string<SlotKeyCodec>                     $codecClass
      */
     public function __construct(
         array $dimensions,
-        ?callable $serializer,
-        ?callable $deserializer,
-        string $serializeSeparator = '.',
+        ?string $codecClass = null,
     ) {
-        if (null === $deserializer && '' === $serializeSeparator) {
-            throw new \InvalidArgumentException('A non-empty serialize separator is required when using the default serializer/deserializer');
-        }
+        /** @psalm-suppress UnsafeInstantiation */
+        $this->codec = new ($codecClass ?? DefaultSlotKeyCodec::class)($this);
 
-        // throw if any of the values contain the separator, since the default serializer uses it
-        foreach ($dimensions as $name => $values) {
-            foreach ($values as $value) {
-                if (str_contains($value, $serializeSeparator)) {
-                    throw new \InvalidArgumentException("Dimension values cannot contain '$serializeSeparator': $name => $value");
-                }
-            }
-        }
+        $this->codec->initialDimensionValueValidation($dimensions);
 
         $this->dimensions = $dimensions;
-        $this->serializer = \Closure::fromCallable(
-            $serializer ??
-            /** @param array<non-empty-string, string> $values **/
-            function (array $values) use ($serializeSeparator) {
-                // throw if $value keys are not the same as dimension names
-                if (array_keys($values) !== $this->dimensionNames) {
-                    throw new \InvalidArgumentException('Value keys must match dimension names: '.implode(', ', $this->dimensionNames));
-                }
+        $this->dimensionNames = array_keys($dimensions);
 
-                // make sure the values are in the same order as the dimensions
-                /** @var non-empty-string $key */
-                $key = implode($serializeSeparator, array_map(fn ($name) => $values[$name], $this->dimensionNames));
+        // initialize nil slot
+        $nilKey = $this->codec->nilKey();
+        $this->slotsByKey[$nilKey] = $this->nilSlot = new SlotKey($nilKey, null, $this);
 
-                return $key;
-            },
-        );
-
-        $this->deserializer = \Closure::fromCallable(
-            $deserializer ??
-            function (string $key) use ($serializeSeparator) {
-                $exploded = explode($serializeSeparator, $key);
-                // throw if the number of exploded parts does not match the number of dimensions
-                if (count($exploded) !== count($this->dimensions)) {
-                    throw new \InvalidArgumentException("Key '$key' does not match the expected format for dimensions: ".implode(', ', $this->dimensionNames));
-                }
-                $dimensions = array_combine($this->dimensionNames, $exploded);
-
-                // throw if one of the values does not match the expected values for its dimension
-                $this->validateDimensionValues($dimensions, true);
-
-                // split the key by the separator and map it back to the dimension names
-                return $dimensions;
-            },
-        );
-
+        // build full cartesian product of dimensions to get all possible slots
         foreach ($this->cartesian($dimensions) as $values) {
-            $key = ($this->serializer)($values);
+            $key = $this->codec->serialize($values);
 
             $this->slotsByKey[$key] = new SlotKey($key, $values, $this);
         }
     }
 
     /**
+     * This function is to be used after the SlotSpace is constructed and applies provided inclusion/exclusion
+     * rules in sequential order, to shape the slot space into a shape meaningful for the application domain.
+     *
+     * A "full slot space" is defined by the cartesian product of all dimensions and their values, and contains
+     * all possible combinations of dimension values.
+     * Inclusion rules add matching slots to the valid set, while exclusion rules remove remove them.
+     *
+     * Since the rules are applied sequentially, later rules may override earlier ones.
+     * The starting slot space is determined by the first rule in the list:
+     * If it is an exclusion rule, then we start with a full slot space.
+     * If it is an inclusion rule, then we start with an empty slot space.
+     *
+     * @param RuleSet<SlotRule>|list<SlotRule|RuleSet<SlotRule>> $rules list of patterns to include or exclude certain slots.
+     *                                                                  If the list is empty, all combinations of dimensions are included.
+     *                                                                  Exclusion patterns start with '-', inclusion patterns start with '+' or have no prefix. Patterns are applied in order, so later patterns override earlier ones.
+     *                                                                  If the first pattern starts with '-', it is treated as an exclusion pattern and all slots are included by default. If the first pattern starts with '+', it is treated as an inclusion pattern and no slots are included by default.
+     */
+    public function applySlotRules(RuleSet | array $rules): self
+    {
+        // flatten potentially nested RuleSet into a single list of SlotRule
+        $rules = (is_array($rules))
+            ? (new RuleSet($rules))->all()
+            : $rules->all();
+
+        if (empty($rules)) {
+            return $this; // no rules, keep all slots
+        }
+
+        $slots = $rules[0]->allow ? [] : $this->slotsByKey;
+
+        foreach ($rules as $rule) {
+            $ruleSlots = SlotPattern::from($rule->pattern, $this)->expand();
+            $slots = $rule->allow
+                ? array_merge($slots, $ruleSlots)
+                : array_diff_key($slots, $ruleSlots);
+        }
+
+        $this->slotsByKey = $slots;
+
+        return $this;
+    }
+
+    /**
+     * This is used to generate the valid edges between slots, after the valid slots have been determined by the slot rules.
+     * The starting point is always an empty set of edges, and the rules are applied sequentially to add edges between slots matching the from and to patterns.
+     *
+     * Edge rules are stored at origin slot level, to be lazily evaluated into actual edges when needed.
+     *
+     * @param RuleSet<EdgeRule>|list<EdgeRule|RuleSet<EdgeRule>> $rules
+     */
+    public function applyEdgeRules(RuleSet | array $rules): self
+    {
+        $rules = (is_array($rules))
+            ? (new RuleSet($rules))->all()
+            : $rules->all();
+
+        if (empty($rules)) {
+            return $this; // no rules, keep all slots
+        }
+
+        foreach ($rules as $rule) {
+            $ruleSlots = SlotPattern::from($rule->from, $this)->expand();
+            foreach ($ruleSlots as $slotKey => $_) {
+                $this->edgeRulesByOriginSlot[$slotKey][] = $rule;
+            }
+        }
+
+        return $this;
+    }
+
+    /**
+     * Apply edge rules in sequence to generate a list of edges
+     * Cache edge list by slot key at $this->outgoingEdgeByOriginSlot.
+     *
+     * @return array<non-empty-string, MovementEdge>
+     */
+    public function getEdgesFrom(SlotKey $from): array
+    {
+        $fromKey = $from->key();
+        $edges = $this->outgoingEdgeByOriginSlot[$fromKey] ?? [];
+        if ($edges) {
+            return $edges;
+        }
+
+        $rules = $this->edgeRulesByOriginSlot[$fromKey] ?? [];
+
+        $edges = [];
+        foreach ($rules as $rule) {
+            foreach (SlotPattern::from($rule->to, $this)->expand() as $toKey => $toSlot) {
+                if ($rule->allow) {
+                    $edges[$toKey] ??= new MovementEdge($from, $toSlot, $rule->label);
+                    $edges[$toKey] = $edges[$toKey]->meta($rule->attributes);
+                } else {
+                    unset($edges[$toKey]);
+                }
+            }
+        }
+
+        return $this->outgoingEdgeByOriginSlot[$fromKey] = $edges;
+    }
+
+    /**
+     * @return list<non-empty-string>
+     */
+    public function dimensionNames(): array
+    {
+        return $this->dimensionNames;
+    }
+
+    /** @return array<non-empty-string, list<non-empty-string>> */
+    public function dimensions(): array
+    {
+        return $this->dimensions;
+    }
+
+    /**
+     * Get the list of all possible valid values for a specific dimension.
+     *
      * @param non-empty-string $dimension
      *
      * @return list<non-empty-string>
      */
-    private function matchDimensionValues(string $dimension, string $pattern): array
+    public function dimensionValues(string $dimension): array
     {
-        $values = $this->dimensions[$dimension] ?? null;
-        if (null === $values) {
+        return $this->dimensions[$dimension] ??
             throw new \InvalidArgumentException("Unknown dimension: $dimension");
-        }
-
-        if (str_contains($pattern, '*')) {
-            $cached = $this->dimensionExpansions[$dimension][$pattern] ?? null;
-            if (null !== $cached) {
-                return $cached;
-            }
-            $parts = explode('*', $pattern);
-            $regex = '/^'.implode('.*', array_map('preg_quote', $parts)).'$/';
-            /** @var list<non-empty-string> $matches */
-            $matches = array_values(preg_grep($regex, $values));
-
-            return $this->dimensionExpansions[$dimension][$pattern] = $matches;
-        }
-
-        if (!in_array($pattern, $values, true)) {
-            throw new \InvalidArgumentException(
-                "Value '$pattern' is not valid for dimension '$dimension'. Expected values: "
-                .implode(', ', $values),
-            );
-        }
-
-        return [$pattern];
     }
 
     /**
-     * Summary of validateDimension.
+     * Expand a string or array of Slot pattern into a list of partials.
      *
-     * @param array<non-empty-string, array<string|null>|string|null> $values
-     *
-     * @throws \InvalidArgumentException
-     */
-    public function validateDimensionValues(array $values, bool $allowWildcards = false, bool $allowValueArrays = false): void
-    {
-        foreach ($values as $dim => $val) {
-            if (is_array($val)) {
-                if (!$allowValueArrays) {
-                    throw new \InvalidArgumentException("Array values are not allowed for dimension '$dim'");
-                }
-                foreach ($val as $v) {
-                    $this->validateDimensionValue($dim, $v, $allowWildcards);
-                }
-            } else {
-                $this->validateDimensionValue($dim, $val, $allowWildcards);
-            }
-        }
-    }
-
-    /**
-     * @param non-empty-string $dimension
-     *
-     * @throws \InvalidArgumentException
-     */
-    public function validateDimensionValue(string $dimension, ?string $value, bool $allowWildcards): void
-    {
-        $value = $value ?? '*' ?: '*';
-        $isWildcard = '*' === $value;
-        $hasWildCard = $isWildcard || str_contains($value, '*');
-
-        if ($hasWildCard && !$allowWildcards) {
-            throw new \InvalidArgumentException("Value for dimension '$dimension' cannot be empty or null");
-        }
-        if ($isWildcard) {
-            return;
-        }
-
-        if (!$this->matchDimensionValues($dimension, $value)) {
-            throw new \InvalidArgumentException(
-                "Unknown $dimension: '$value'. Expected values: ".implode(', ', $this->dimensions[$dimension] ?? []),
-            );
-        }
-    }
-
-    /**
      * @param string|array<non-empty-string, ?string>|null $pattern
      *
-     * @return SlotKey[]
+     * @return list<array<non-empty-string, non-empty-string>|null>
      */
-    public function slots(string | array | null $pattern = null): array
+    public function expandSlotPattern(string | array | null $pattern): array
     {
-        if (null === $pattern) {
-            return $this->slotsByKey;
+        if (!is_array($pattern)) {
+            $pattern = $this->codec->deserialize($pattern);
+            if (null === $pattern) {
+                return [null];
+            }
         }
 
-        // first expand the pattern if it's a string
-        if (is_string($pattern)) {
-            $pattern = ($this->deserializer)($pattern);
+        foreach ($pattern as $dimension => $val) {
+            $values = $this->dimensions[$dimension] ?? null;
+            $pattern[$dimension] = [];
+            if (null === $values) {
+                throw new \InvalidArgumentException("Unknown dimension: $dimension");
+            }
+            if ($this->codec->isWildcard($val)) {
+                // treat missing and wildcard values as the same: matching all values for the dimension
+                continue;
+            }
+            /** @var string $val */
+            foreach (explode($this->codec->alternative(), $val) as $altVal) {
+                /** @var non-empty-string $altVal */
+                $patternValues = $this->codec->matchDimensionValues($dimension, $altVal);
+                if (count($patternValues) === count($values)) {
+                    // skip validation if the pattern matches all values for the dimension
+                    continue 2;
+                }
+                $pattern[$dimension] = [...$pattern[$dimension], ...$patternValues];
+            }
+            /** @var array<non-empty-string, list<non-empty-string>> $pattern */
+            if (count($pattern[$dimension]) === count($values)) {
+                unset($pattern[$dimension]);
+            }
         }
-        // then expand any wildcard values in the pattern to get a list of matching slots
-        foreach ($pattern as $dim => $val) {
-            $pattern[$dim] = $this->matchDimensionValues($dim, $val ?? '*' ?: '*');
-        }
+
         /** @var array<non-empty-string, list<non-empty-string>> $pattern */
+        return $this->cartesian(array_filter($pattern));
+    }
 
-        // now we have a list of possible values for each dimension, we can generate all combinations of those values and find the corresponding slots
-        $slots = [];
-        foreach ($this->cartesian($pattern) as $values) {
-            $key = ($this->serializer)($values);
-
-            $slots[] = new SlotKey($key, $values, $this);
-        }
-
-        return $slots;
+    public function nilSlot(): SlotKey
+    {
+        return $this->nilSlot;
     }
 
     /**
      * Finds the slot corresponding to the given key or values. The input can be either a serialized key string
      * or an array of dimension values, which will be serialized using the defined serializer.
-     * Throws an exception if the resulting key does not correspond to any defined slot.
+     *
+     * All dimensions must be specified in the input, and wildcards are not allowed.
+     *
+     * @see SlotPattern::from for more flexible pattern matching with support for wildcards and missing values.
      *
      * @param list<string>|array<non-empty-string, string>|string $keyOrValues
      *
-     * @throws \InvalidArgumentException
+     * @return SlotKey|null Returns the SlotKey if found, or null if no matching slot exists
      */
-    public function slot(array | string $keyOrValues): SlotKey
+    public function trySlot(array | string | null $keyOrValues): ?SlotKey
     {
+        if (null === $keyOrValues || $this->codec->nilKey() === $keyOrValues) {
+            return $this->nilSlot();
+        }
         // If passed $keyOrValues is a list<non-empty-string>, treat the values as positional
         // and convert it to an associative array using dimension names as keys
         if (is_array($keyOrValues)) {
@@ -244,142 +286,117 @@ final class SlotSpace
                 $keyOrValues = array_combine($this->dimensionNames, $keyOrValues);
             }
             /** @var array<non-empty-string, string> $keyOrValues */
-            $key = ($this->serializer)($keyOrValues);
+            $key = $this->codec->serialize($keyOrValues);
         } else {
             $key = $keyOrValues;
         }
 
-        $slot = $this->slotsByKey[$key] ?? null;
+        return $this->slotsByKey[$key] ?? null;
+    }
+
+    /**
+     * Finds the slot corresponding to the given key or values. The input can be either a serialized key string
+     * or an array of dimension values, which will be serialized using the defined serializer.
+     *
+     * All dimensions must be specified in the input, and wildcards are not allowed.
+     *
+     * @see SlotPattern::from for more flexible pattern matching with support for wildcards and missing values.
+     *
+     * @param list<string>|array<non-empty-string, string>|string $keyOrValues
+     *
+     * @throws \InvalidArgumentException if the resulting key does not correspond to any defined slot
+     */
+    public function slot(array | string | null $keyOrValues): SlotKey
+    {
+        $slot = $this->trySlot($keyOrValues);
 
         if (null === $slot) {
-            throw new \InvalidArgumentException("Unknown slot: $key");
+            /** @psalm-suppress RiskyTruthyFalsyComparison */
+            throw new \InvalidArgumentException('Unknown slot: '.(json_encode($keyOrValues) ?: 'unrepresentable value'));
         }
 
         return $slot;
     }
 
     /**
-     * Finds all slots matching the given pattern, where the pattern can contain specific values,
+     * Finds all slots matching the given partial pattern, where the pattern can contain specific values,
      * and '*' can be used as a wildcard expression to match any value for a dimension.
      * The pattern can be either a serialized key string or an array of dimension values, where
      * missing or null values are treated as '*' wildcards.
      *
-     * @param array<non-empty-string, ?string>|string $pattern
+     * @param array<non-empty-string, ?string> $partial
      *
      * @return list<SlotKey>
      */
-    private function match(array | string $pattern): array
+    public function matchPartial(?array $partial): array
     {
-        if (is_string($pattern)) {
-            $pattern = $this->normalizePatternToArray($pattern);
+        // a null partial matches only the nil (source/sink) slot.
+        if (null === $partial) {
+            return [$this->nilSlot()];
         }
 
         // for each dimension in the pattern, get the list of matching values (either
         // the specific value or all values if it's a wildcard)
         $matched = [];
-        foreach ($pattern as $dim => $val) {
-            $matched[$dim] = $this->matchDimensionValues($dim, $val ?? '*' ?: '*');
+        foreach ($partial as $dim => $val) {
+            $matched[$dim] = $this->codec->matchDimensionValues($dim, $val);
         }
 
-        // then generate the cartesian product of the matched values for each dimension
-        // and convert each combination of values to a slot using the serializer and the
-        // slotsByKey map
-        /** @var list<SlotKey> */
-        return array_map(
-            fn ($values) => $this->slot(($this->serializer)($values)),
-            $this->cartesian($matched),
-        );
-    }
+        // generate the cartesian product of the matched values for each dimension
+        $cartesian = $this->cartesian($matched + $this->dimensions);
 
-    /**
-     * @param array<non-empty-string, ?string>|string $pattern
-     * @param bool                                    $allowWildcards whether to allow wildcard values in the pattern, if false, all values must be non-empty strings and wildcards are not allowed
-     *
-     * @return ($allowWildcards is false ? array<non-empty-string, string> : array<non-empty-string, ?string>)
-     */
-    private function normalizePatternToArray(array | string $pattern, bool $allowWildcards = true): array
-    {
-        if (is_string($pattern)) {
-            $pattern = ($this->deserializer)($pattern);
-            if (!$allowWildcards) {
-                $this->validateDimensionValues($pattern, false);
+        // convert each combination of values to a slot using the serializer and the slotsByKey map
+        $result = [];
+        foreach ($cartesian as $values) {
+            $slot = $this->slotsByKey[$this->codec->serialize($values)] ?? null;
+            // skip slots that have been excluded by the slot rules and therefore do not exist in the slotsByKey map
+            if (null !== $slot) {
+                $result[] = $slot;
             }
-        } else {
-            // validate the pattern values
-            $this->validateDimensionValues($pattern, $allowWildcards);
         }
 
-        return $pattern;
+        return $result;
     }
 
     /**
      * Generate edges using pattern expansion
      * Both wildcard and missing values are supported, with the same semantics.
      *
-     * @param array<non-empty-string, ?string>|string $fromPattern Specified values match with equality, wildcard/missing match with anything
-     * @param array<non-empty-string, ?string>|string $toPattern   Specified values are kept, wildcard/missing are filled in from the $fromPattern match
+     * @param non-empty-string|array<non-empty-string, ?string>|null $fromPattern Specified values match with equality, wildcard/missing match with anything
+     * @param non-empty-string|array<non-empty-string, ?string>|null $toPartials  Specified values are kept, wildcard/missing are filled in from the $fromPattern match
      *
      * @return MovementEdge[]
      */
-    public function edgesBetween(array | string $fromPattern, array | string $toPattern): array
+    public function edgesBetween(array | string | null $fromPattern, array | string | null $toPartials): array
     {
-        /** @var array<non-empty-string, string> */
-        $toPattern = $this->normalizePatternToArray($toPattern);
-
-        // remove missing-values placeholders from $toPattern, those will be filled in from the $from slot
-        $toPattern = array_filter($toPattern, fn (mixed $value) => '*' !== $value && '' !== $value);
-
         $edges = [];
-        foreach ($this->match($fromPattern) as $from) {
-            // values from $to override values from $from when they exist
-            $edges[] = new MovementEdge($from, $from->with($toPattern));
+        $toPartials = $this->expandSlotPattern($toPartials);
+        foreach (SlotPattern::from($fromPattern, $this)->expand() as $fromSlot) {
+            foreach ($toPartials as $toPartial) {
+                foreach ($fromSlot->with($toPartial) as $toSlot) {
+                    if ($fromSlot !== $toSlot) {
+                        $edges[] = new MovementEdge($fromSlot, $toSlot);
+                    }
+                }
+            }
         }
 
         return $edges;
     }
 
     /**
-     * Generate a single edge. Wildcard and missing values are not supported.
-     *
-     * @psalm-type NodePattern = array<non-empty-string, string>|string
-     *
-     * @param ?NodePattern $fromPattern
-     * @param ?NodePattern $toPattern
-     */
-    public function move(array | string | null $fromPattern, array | string | null $toPattern): MovementEdge
-    {
-        $toSlot =
-        /** @param ?NodePattern $p */
-        fn (array | string | null $p): ?SlotKey => null === $p
-            ? null
-            : $this->slot($this->normalizePatternToArray($p, false));
-
-        return new MovementEdge($toSlot($fromPattern), $toSlot($toPattern));
-    }
-
-    /**
      * Generate a full path from a list of (from, to) pattern tuples.
      * Wildcard are supported when both from and to patterns are specified.
      *
-     * @psalm-type NodePattern = array<non-empty-string, string>|string
+     * @psalm-type NodePattern = array<non-empty-string, string>|non-empty-string
      *
      * @param list<array{?NodePattern, ?NodePattern}|null> $fromToPatterns
      */
-    public function path(array $fromToPatterns, bool $reverse): MovementPath
+    public function cascade(array $fromToPatterns, bool $reverse): MovementPath
     {
         $edges = [];
-        foreach (array_filter($fromToPatterns) as $fromTo) {
-            [$from, $to] = $fromTo;
-            if (null === $from) {
-                if (null === $to) {
-                    continue; // skip no-op edge
-                }
-                $newEdges = array_map(fn (SlotKey $mp) => new MovementEdge($mp, null), $this->match($to));
-            } elseif (null === $to) {
-                $newEdges = array_map(fn (SlotKey $mp) => new MovementEdge(null, $mp), $this->match($from));
-            } else {
-                $newEdges = $this->edgesBetween($from, $to);
-            }
+        foreach (array_filter($fromToPatterns) as [$from, $to]) {
+            $newEdges = $this->edgesBetween($from, $to);
             $edges = [...$edges, ...$newEdges];
         }
 
@@ -392,6 +409,12 @@ final class SlotSpace
     }
 
     /**
+     * Generate the cartesian product of the given dimensions, where the input
+     * is an array of dimension name to list of values, and the output is a list
+     * of all combinations of dimension values, where each combination is represented as an array of dimension name to value.
+     *
+     * Dimensions with empty value lists are ignored.
+     *
      * @param array<non-empty-string, list<non-empty-string>> $dimensions
      *
      * @return list<array<non-empty-string, non-empty-string>>
@@ -400,7 +423,7 @@ final class SlotSpace
     {
         $result = [[]];
 
-        foreach ($dimensions as $name => $values) {
+        foreach (array_filter($dimensions) as $name => $values) {
             $append = [];
 
             foreach ($result as $product) {

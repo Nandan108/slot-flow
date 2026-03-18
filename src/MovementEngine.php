@@ -4,24 +4,30 @@ declare(strict_types=1);
 
 namespace Nandan108\SlotFlow;
 
+use Nandan108\SlotFlow\Contracts\Constraint;
+
+/**
+ * @template TQtty of int|float
+ */
 final class MovementEngine
 {
     /**
      * Summary of execute.
      *
-     * @param array<Constraint> $constraints
+     * @param TQtty                   $quantity
+     * @param list<Constraint<TQtty>> $constraints
+     *
+     * @return MovementResult<TQtty>
      */
     public function execute(
         Inventory $inventory,
         MovementPath $path,
-        int $quantity,
+        int | float $quantity,
         array $constraints = [],
     ): MovementResult {
         $remaining = $quantity;
 
-        /** @var list<array{SlotKey, int}> $changes */
-        $changes = [];
-        /** @var list<MovementEvent> $events */
+        /** @var list<MovementEvent<TQtty>> $events */
         $events = [];
 
         foreach ($path->edges() as $edge) {
@@ -31,11 +37,11 @@ final class MovementEngine
 
             $movable = $remaining;
 
-            if ($edge->from) {
+            if (!$edge->from->isNil()) {
                 $available = $inventory->get($edge->from);
                 $movable = min($movable, $available);
             }
-
+            /** @var TQtty $movable */
             foreach ($constraints as $constraint) {
                 $movable = $constraint->limit(
                     $inventory,
@@ -43,29 +49,33 @@ final class MovementEngine
                     $movable,
                 );
             }
-
             if ($movable <= 0) {
                 continue;
             }
 
-            $events[] = new MovementEvent($edge, $movable);
+            $events[] = new MovementEvent(
+                $edge,
+                $movable,
+                $edge->from->isNil() ? null : $inventory->get($edge->from),
+                $edge->to->isNil() ? null : $inventory->get($edge->to),
+            );
 
-            if ($edge->from) {
+            if (!$edge->from->isNil()) {
                 $inventory->add($edge->from, -$movable);
-                $changes[] = [$edge->from, -$movable];
             }
 
-            if ($edge->to) {
+            if (!$edge->to->isNil()) {
                 $inventory->add($edge->to, $movable);
-                $changes[] = [$edge->to, $movable];
             }
 
+            /** @psalm-suppress InvalidOperand, MixedOperand */
             $remaining -= $movable;
         }
 
-        /** @var non-negative-int $remaining */
-        $mutations = array_map(fn ($change) => new SlotMutation($change[0], $change[1]), $changes);
+        /** @psalm-suppress InvalidArgument */
+        $result = new MovementResult($events, $remaining);
 
-        return new MovementResult($mutations, $events, $remaining);
+        /** @var MovementResult<TQtty> $result */
+        return $result;
     }
 }

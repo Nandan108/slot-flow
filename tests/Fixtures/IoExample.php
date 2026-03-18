@@ -5,13 +5,16 @@ declare(strict_types=1);
 namespace Tests\Fixtures;
 
 use Nandan108\SlotFlow\BatchMovementEngine;
+use Nandan108\SlotFlow\EdgeRule;
 use Nandan108\SlotFlow\Inventory;
 use Nandan108\SlotFlow\InventoryBatch;
 use Nandan108\SlotFlow\MovementEngine;
 use Nandan108\SlotFlow\MovementPath;
 use Nandan108\SlotFlow\MovementPlan;
 use Nandan108\SlotFlow\MovementResult;
+use Nandan108\SlotFlow\RuleSet;
 use Nandan108\SlotFlow\SlotKey;
+use Nandan108\SlotFlow\SlotRule;
 use Nandan108\SlotFlow\SlotSpace;
 
 /**
@@ -24,11 +27,57 @@ final class IoExample
 
     public function __construct()
     {
-        $this->space = SlotSpace::define([
-            'loc'   => ['sup', 'wh1', 'wh2'], // sup: supplier, whN: warehouse N (1 or 2)
-            'own'   => ['C', 'F'],     // C: consignment, F: firm purchase
-            'state' => ['inbound', 'fs', 'reserved', 'sd'],   // fs: forsale, sd: sold
+        $this->space = SlotSpace::define(
+            [
+                'loc'   => [
+                    'sup',  // supplier
+                    'eu',   // European partner warehouse (serves EU customers)
+                    'wh1',  // warehouse 1
+                    'wh2',  // warehouse 2
+                ],
+                'own'   => [
+                    'C',    // consignment stock
+                    'F',    // firm purchase stock
+                ],
+                'state' => [
+                    'inb',  // inbound from supplier: stock is expected but not yet received
+                    'fs',   // forsale: available stock that can be sold
+                    'crt',  // in cart: stock that is reserved in customers' carts but not yet sold
+                    'sd',   // sold: stock that has been sold but not yet dispatched
+                    'dsp',  // dispatched: stock that has been sold and dispatched but not yet delivered
+                    'dlv',  // delivered: stock that has been sold and delivered but not yet returned or marked as completed
+                    'ret',  // returned: stock that has been returned by customers but not yet processed
+                    'def',  // defect: stock that is defective and cannot be sold
+                ],
+            ],
+        )->applySlotRules(RuleSet::from(
+            SlotRule::deny('eu.*.crt'), // EU cart doesn't exist (sold via separate platform that doesn't support reservation)
+            SlotRule::deny('eu.*.inb'), // Stock is never received from EU warehouse, so we can deny any movement from EU_inb to prevent mistakes
+        ))->applyEdgeRules([
+            EdgeRule::allow('receive', 'sup.*.fs', 'wh*.*.fs'), // inbound stock can be received to any forsale stock in the warehouse
+            EdgeRule::allow('receive-extra', 'sup.C|F.fs', null), // inbound stock can be received to any forsale stock in the warehouse
+
+            EdgeRule::allow('reserve', '*.*.fs', '*.*.crt'), // reservation can happen from any forsale stock
+            EdgeRule::allow('sell', '*.*.crt', '*.*.sd'), // reserved stock can either be sold (sd) or released back to forsale (fs)
+            EdgeRule::allow('release', '*.*.crt', '*.*.fs'), // reserved stock can either be sold (sd) or released back to forsale (fs)
+
+            EdgeRule::allow('dispatch', '*.*.sd', '*.*.dsp'), // dispatch can happen from any sold stock
+            EdgeRule::allow('deliver', '*.*.dsp', '*.*.dlv'), // delivery can happen from any dispatched stock
+
+            EdgeRule::allow('return', '*.*.dlv', '*.*.ret'), // return can happen from delivered stock
+            EdgeRule::allow('complete', '*.*.dlv', null), // completion can happen from delivered stock without return
+
+            EdgeRule::allow('regularize', '*.*.ret', '*.*.fs'), // returned stock can be regularized to forsale
+
+            EdgeRule::allow('defect', '*.*.inb|fs|ret', '*.*.def'), // any inbound, forsale, or returned stock can be marked as defective
+            EdgeRule::allow('discard', '*.*.def', null), // defective stock can be discarded
+
+            EdgeRule::deny('*.C.*', '*.F.*'), // deny ownership change between consignment and firm purchase
+            EdgeRule::deny('*.F.*', '*.C.*'), // deny ownership change between firm purchase and consignment
+
+            EdgeRule::allow('regularize-consignment', 'wh*.C.ret', 'wh*.F.fs'), // allow returned consignment stock can be regularized to firm purchase stock within the warehouse
         ]);
+
     }
 
     /**
@@ -72,7 +121,9 @@ final class IoExample
     {
         $plan = $planOrPath instanceof MovementPlan ? $planOrPath : new MovementPlan($planOrPath);
 
-        return (new BatchMovementEngine(new MovementEngine()))
+        $engine = new BatchMovementEngine(new MovementEngine());
+
+        return $engine
             ->execute(
                 batch: $this->prepareBatch($rows),
                 plan: $plan,
@@ -95,7 +146,7 @@ final class IoExample
     public function moveReceivePO(array $optsAndQuantities, string $ownership, string $locCode, bool $reverse): array
     {
         $S = $this->space;
-        $S->validateDimensionValues(['loc' => $locCode, 'own' => $ownership]);
+        $S->codec->validateDimensionValues(['loc' => $locCode, 'own' => $ownership]);
 
         $state = match ($ownership) {
             // When receiving consignment stock,
@@ -104,35 +155,36 @@ final class IoExample
             'F' => '*', // we move everything regardless of state
         };
 
-        $path = $S->path([
+        $path = $S->cascade([
             // stock that was sold: sup.*.sd => wh*.*.sd
             ["sup.$ownership.$state", "$locCode.$ownership.$state"],
-            // any additional received quantities also go to wh*.F.fs
+            // Sometimes, due to errors at supplier end, we might receive more items than we purchased.
+            // Such excess quantities are considered "overflow", which goes to forsale in the warehouse.
             [null, "$locCode.$ownership.fs"],
         ], $reverse);
 
         return $this->processBatch($optsAndQuantities, $path);
     }
 
-    /** @param list<TRow> $optsAndQuantities */
-    public static function moveBooked(&$optsAndQuantities, $accountId, $zone)
-    {
-        // return self::moveStock(
-        //     optsAndQuantities: $optsAndQuantities,
-        //     movePath: self::getMovePath('fs', 'sd', $zone, true),
-        //     moveTypeName: 'SO',
-        //     refId: $orderId,
-        //     options: [
-        //         'log_adminId'         => 1,
-        //          // no need to port $failOnUnspentQty. In the new implementation, the movement engine will simply
-        //          // move as much as possible up to the requested quantity, and return the unspent quantity in the
-        //          // MovementResult, so the caller can decide how to handle it.
-        //         'failOnUnspentQty'    => $failOnUnspentQty,
-        //         'newStockHasZeroQty'  => true,
-        //         'setStockMovesOnOpts' => true,
-        //     ],
-        // );
-    }
+    // /** @param list<TRow> $optsAndQuantities */
+    // public static function moveBooked(&$optsAndQuantities, $accountId, $zone)
+    // {
+    //     return self::moveStock(
+    //         optsAndQuantities: $optsAndQuantities,
+    //         movePath: self::getMovePath('fs', 'sd', $zone, true),
+    //         moveTypeName: 'SO',
+    //         refId: $orderId,
+    //         options: [
+    //             'log_adminId'         => 1,
+    //              // no need to port $failOnUnspentQty. In the new implementation, the movement engine will simply
+    //              // move as much as possible up to the requested quantity, and return the unspent quantity in the
+    //              // MovementResult, so the caller can decide how to handle it.
+    //             'failOnUnspentQty'    => $failOnUnspentQty,
+    //             'newStockHasZeroQty'  => true,
+    //             'setStockMovesOnOpts' => true,
+    //         ],
+    //     );
+    // }
 
     // // Can be used to cancel boutique purchases anytime
     // // Can be used for consignment products ONLY while sale is ongoing (with limitFsByIfs)
@@ -272,33 +324,33 @@ final class IoExample
         return (new MovementEngine())->execute($inventory, $path, $quantity);
     }
 
-    public function testReceivePurchaseOrder(): void
-    {
-        // ** @var array<TRow> $rows */
-        $rows = [
-            ['var' => 'A', 'mvQtty' => 10, 'loc' => 'sup', 'own' => 'C', 'fs' => 10, 'sd' => 10],
-            ['var' => 'A', 'mvQtty' => 10, 'loc' => 'wh1', 'own' => 'C', 'fs' => 20, 'sd' => 01],
-            ['var' => 'A', 'mvQtty' => 10, 'loc' => 'sup', 'own' => 'C', 'fs' => 30, 'sd' => 10],
-            ['var' => 'A', 'mvQtty' => 10, 'loc' => 'wh1', 'own' => 'C', 'fs' => 40, 'sd' => 01],
-            ['var' => 'B', 'mvQtty' => 13, 'loc' => 'sup', 'own' => 'C', 'fs' => 50, 'sd' => 20],
-            ['var' => 'B', 'mvQtty' => 13, 'loc' => 'wh1', 'own' => 'C', 'fs' => 60, 'sd' => 20],
-            ['var' => 'B', 'mvQtty' => 13, 'loc' => 'sup', 'own' => 'C', 'fs' => 70, 'sd' => 20],
-            ['var' => 'B', 'mvQtty' => 13, 'loc' => 'wh1', 'own' => 'C', 'fs' => 80, 'sd' => 20],
-        ];
+    // public function testReceivePurchaseOrder(): void
+    // {
+    //     // ** @var array<TRow> $rows */
+    //     $rows = [
+    //         ['var' => 'A', 'mvQtty' => 10, 'loc' => 'sup', 'own' => 'C', 'fs' => 10, 'sd' => 10],
+    //         ['var' => 'A', 'mvQtty' => 10, 'loc' => 'wh1', 'own' => 'C', 'fs' => 20, 'sd' => 01],
+    //         ['var' => 'A', 'mvQtty' => 10, 'loc' => 'sup', 'own' => 'C', 'fs' => 30, 'sd' => 10],
+    //         ['var' => 'A', 'mvQtty' => 10, 'loc' => 'wh1', 'own' => 'C', 'fs' => 40, 'sd' => 01],
+    //         ['var' => 'B', 'mvQtty' => 13, 'loc' => 'sup', 'own' => 'C', 'fs' => 50, 'sd' => 20],
+    //         ['var' => 'B', 'mvQtty' => 13, 'loc' => 'wh1', 'own' => 'C', 'fs' => 60, 'sd' => 20],
+    //         ['var' => 'B', 'mvQtty' => 13, 'loc' => 'sup', 'own' => 'C', 'fs' => 70, 'sd' => 20],
+    //         ['var' => 'B', 'mvQtty' => 13, 'loc' => 'wh1', 'own' => 'C', 'fs' => 80, 'sd' => 20],
+    //     ];
 
-        // This is an purchase order reception, where we move items from supplier to warehouse.
-        // If quantity received is higher than quantity ordered (mvQtty > sup-sd), the excess goes to
-        // warehouse as forsale (quantity added to `fs`).
-        $edges = [
-            $this->space->move('sup.C.sd', 'wh*.C.sd'),
-        ];
+    //     // This is an purchase order reception, where we move items from supplier to warehouse.
+    //     // If quantity received is higher than quantity ordered (mvQtty > sup-sd), the excess goes to
+    //     // warehouse as forsale (quantity added to `fs`).
+    //     $edges = [
+    //         $this->space->move('sup.C.sd', 'wh*.C.sd'),
+    //     ];
 
-        $plan = new MovementPlan(
-            path: new MovementPath(...$this->space->edgesBetween('*.sd', '*.fs')),
-        );
+    //     $plan = new MovementPlan(
+    //         path: new MovementPath(...$this->space->edgesBetween('*.sd', '*.fs')),
+    //     );
 
-        $result = $this->processBatch($rows, $plan);
-    }
+    //     $result = $this->processBatch($rows, $plan);
+    // }
 
     // public function outgress(InventoryBatch $batch, Repository $repo): void
     // {

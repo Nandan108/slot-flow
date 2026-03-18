@@ -4,34 +4,29 @@ declare(strict_types=1);
 
 namespace Nandan108\SlotFlow;
 
+/**
+ * @template TQtty of int|float
+ */
 final class MovementResult
 {
     /**
-     * @param list<SlotMutation>  $mutations
-     * @param list<MovementEvent> $events
-     * @param non-negative-int    $remaining
+     * @param list<MovementEvent<TQtty>> $events
+     * @param TQtty                      $remaining
      */
     public function __construct(
-        private array $mutations,
         private array $events,
-        private int $remaining,
+        private int | float $remaining,
     ) {
     }
 
-    /** @return list<SlotMutation> */
-    public function mutations(): array
-    {
-        return $this->mutations;
-    }
-
-    /** @return list<MovementEvent> */
+    /** @return list<MovementEvent<TQtty>> */
     public function events(): array
     {
         return $this->events;
     }
 
-    /** @return non-negative-int */
-    public function remaining(): int
+    /** @return TQtty */
+    public function remaining(): int | float
     {
         return $this->remaining;
     }

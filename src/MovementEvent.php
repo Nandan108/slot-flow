@@ -4,12 +4,21 @@ declare(strict_types=1);
 
 namespace Nandan108\SlotFlow;
 
+/**
+ * @template TQtty of int|float
+ */
 final class MovementEvent
 {
-    /** @param non-negative-int $quantity */
+    /**
+     * @param TQtty  $quantity
+     * @param ?TQtty $initialFrom
+     * @param ?TQtty $initialTo
+     **/
     public function __construct(
         private MovementEdge $edge,
-        private int $quantity,
+        private int | float $quantity,
+        private int | float | null $initialFrom,
+        private int | float | null $initialTo,
     ) {
     }
 
@@ -18,8 +27,38 @@ final class MovementEvent
         return $this->edge;
     }
 
-    /** @return non-negative-int */
-    public function quantity(): int
+    public function initialFrom(): int | float | null
+    {
+        return $this->initialFrom;
+    }
+
+    public function initialTo(): int | float | null
+    {
+        return $this->initialTo;
+    }
+
+    public function finalFrom(): int | float | null
+    {
+        if (null === $this->initialFrom) {
+            return null;
+        }
+
+        /** @psalm-suppress InvalidOperand */
+        return $this->initialFrom - $this->quantity;
+    }
+
+    public function finalTo(): int | float | null
+    {
+        if (null === $this->initialTo) {
+            return null;
+        }
+
+        /** @psalm-suppress InvalidOperand */
+        return $this->initialTo + $this->quantity;
+    }
+
+    /** @return TQtty */
+    public function quantity(): int | float
     {
         return $this->quantity;
     }
