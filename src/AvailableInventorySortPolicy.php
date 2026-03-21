@@ -18,7 +18,7 @@ final class AvailableInventorySortPolicy implements EdgeOrderingPolicyInterface
         return $edges;
     }
 
-    private function available(CascadeContext $ctx, MovementEdge $edge): int|float
+    private function available(CascadeContext $ctx, MovementEdge $edge): int | float
     {
         if ($edge->from->isNil()) {
             return INF;

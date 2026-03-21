@@ -12,33 +12,16 @@ final class Slot
      * @param array<string, mixed>                       $attributes
      */
     public function __construct(
-        private string $key,
-        private ?array $dimensions,
-        private SlotSpace $space,
+        public readonly string $key,
+        public readonly ?array $dimensions,
+        public readonly SlotSpace $space,
         public readonly array $attributes = [],
     ) {
-    }
-
-    /** @return non-empty-string */
-    public function key(): string
-    {
-        return $this->key;
     }
 
     public function isNil(): bool
     {
         return null === $this->dimensions;
-    }
-
-    public function space(): SlotSpace
-    {
-        return $this->space;
-    }
-
-    /** @return ?array<non-empty-string, non-empty-string> */
-    public function dimensions(): ?array
-    {
-        return $this->dimensions;
     }
 
     /**
@@ -69,7 +52,7 @@ final class Slot
      *
      * @param array<string, mixed> $attributes
      */
-    public function meta(array $attributes): self
+    public function withMeta(array $attributes): self
     {
         return new self($this->key, $this->dimensions, $this->space, $attributes + $this->attributes);
     }

@@ -10,7 +10,7 @@ namespace Nandan108\SlotFlow;
 final class MovementEngine
 {
     /**
-     * @param array<mixed> $appContext
+     * @param array<mixed>               $appContext
      * @param array<string, scalar|null> $params
      *
      * @psalm-param TQtty $quantity
@@ -163,8 +163,7 @@ final class MovementEngine
     }
 
     /**
-     * @param array<mixed> $context
-     *
+     * @param array<mixed>                               $context
      * @param string|array<int|string, string|null>|null $pattern
      *
      * @psalm-return string|array<int|string, string|null>|null
@@ -192,16 +191,14 @@ final class MovementEngine
     /**
      * @param array<mixed> $context
      */
-    private function resolveStringParameter(string $value, array $context, bool $allowNull = false): string | null
+    private function resolveStringParameter(string $value, array $context, bool $allowNull = false): ?string
     {
-        /** @var mixed $params */
         $params = $context['params'] ?? [];
         if (!is_array($params) || [] === $params) {
             return $value;
         }
 
-        if (preg_match('/^\{([A-Za-z_][A-Za-z0-9_]*)\}$/', $value, $matches) === 1) {
-            /** @var mixed $resolved */
+        if (1 === preg_match('/^\{([A-Za-z_][A-Za-z0-9_]*)\}$/', $value, $matches)) {
             $resolved = $params[$matches[1]] ?? $value;
 
             if (null === $resolved && $allowNull) {
@@ -218,7 +215,6 @@ final class MovementEngine
         return preg_replace_callback(
             '/\{([A-Za-z_][A-Za-z0-9_]*)\}/',
             static function (array $matches) use ($params, $value): string {
-                /** @var mixed $resolved */
                 $resolved = $params[$matches[1]] ?? $matches[0];
 
                 if (null === $resolved) {

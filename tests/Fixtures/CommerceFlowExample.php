@@ -10,6 +10,7 @@ use Nandan108\SlotFlow\DimensionPriority;
 use Nandan108\SlotFlow\EdgeRule;
 use Nandan108\SlotFlow\Inventory;
 use Nandan108\SlotFlow\InventoryBatch;
+use Nandan108\SlotFlow\LedgerEntry;
 use Nandan108\SlotFlow\MovementEngine;
 use Nandan108\SlotFlow\MovementResult;
 use Nandan108\SlotFlow\RuleSet;
@@ -150,7 +151,7 @@ final class CommerceFlowExample
     public function prepareBatch(array $rows): InventoryBatch
     {
         $space = $this->space;
-        /** @var \Closure(TRow): list<array{Slot|array<non-empty-string, non-empty-string>, int}> $slotRowGetter */
+        /** @var \Closure(TRow): list<array{0: Slot|array<non-empty-string, non-empty-string>, 1: int, 2?: array<string, mixed>}> $slotRowGetter */
         $slotRowGetter = static function (array $row) use ($space): array {
             /** @var TRow $row */
             return self::slotRowsForSpace($space, $row);
@@ -160,19 +161,19 @@ final class CommerceFlowExample
             space: $space,
             rows: $rows,
             /** @param TRow $row */
-            variantGetter: fn ($row): string => $row['var'],
+            subjectGetter: fn ($row): string => $row['var'],
             slotRowGetter: $slotRowGetter,
             /** @param list<TRow> $rows */
             quantityGetter: fn (array $rows) => $rows[array_key_first($rows) ?? 0]['mvQtty'],
             /** @param VariantType $variant */
-            variantIdGetter: fn (string $variant): string => $variant,
+            subjectIdGetter: fn (string $variant): string => $variant,
         );
     }
 
     /**
      * @param TRow $row
      *
-     * @return list<array{0: Slot, 1: int}>
+     * @return list<array{0: Slot, 1: int, 2?: array<string, mixed>}>
      */
     private static function slotRowsForSpace(SlotSpace $space, array $row): array
     {
@@ -182,7 +183,7 @@ final class CommerceFlowExample
             if ($quantity = ($row['inv'][$state] ?? 0)) {
                 $slotRows[] = [
                     $space->slot(['loc' => $row['loc'], 'own' => $row['own'], 'state' => $state])
-                        ->meta(['ifs' => $ifs]),
+                        ->withMeta(['ifs' => $ifs]),
                     $quantity,
                 ];
             }
@@ -198,7 +199,7 @@ final class CommerceFlowExample
      * @param array<mixed>               $context
      * @param array<string, scalar|null> $params
      *
-     * @psalm-return array{result: MovementResult|null, variant: non-empty-string}[] $results
+     * @psalm-return array{result: MovementResult|null, subject: non-empty-string}[] $results
      */
     public function processBatch(array $rows, Cascade $cascade, array $context = [], array $params = []): array
     {
@@ -227,7 +228,7 @@ final class CommerceFlowExample
      * @param bool             $reverse           whether to reverse the movement path
      *                                            (e.g. for adjusting purchase order reception errors)
      *
-     * @psalm-return array{result: MovementResult|null, variant: non-empty-string}[] $results
+     * @psalm-return array{result: MovementResult|null, subject: non-empty-string}[] $results
      **/
     public function moveReceivePO(array $optsAndQuantities, string $ownership, string $locCode, bool $reverse): array
     {
@@ -252,7 +253,7 @@ final class CommerceFlowExample
      *
      * @param list<TRow> $rows
      *
-     * @psalm-return array{result: MovementResult|null, variant: non-empty-string}[] $results
+     * @psalm-return array{result: MovementResult|null, subject: non-empty-string}[] $results
      */
     public function reserve(array $rows): array
     {
@@ -264,7 +265,7 @@ final class CommerceFlowExample
      *
      * @param list<TRow> $rows
      *
-     * @psalm-return array{result: MovementResult|null, variant: non-empty-string}[] $results
+     * @psalm-return array{result: MovementResult|null, subject: non-empty-string}[] $results
      */
     public function release(array $rows): array
     {
@@ -276,7 +277,7 @@ final class CommerceFlowExample
      *
      * @param list<TRow> $rows
      *
-     * @psalm-return array{result: MovementResult|null, variant: non-empty-string}[] $results
+     * @psalm-return array{result: MovementResult|null, subject: non-empty-string}[] $results
      */
     public function book(array $rows): array
     {
@@ -288,7 +289,7 @@ final class CommerceFlowExample
      *
      * @param list<TRow> $rows
      *
-     * @psalm-return array{result: MovementResult|null, variant: non-empty-string}[] $results
+     * @psalm-return array{result: MovementResult|null, subject: non-empty-string}[] $results
      */
     public function dispatch(array $rows): array
     {
@@ -300,7 +301,7 @@ final class CommerceFlowExample
      *
      * @param list<TRow> $rows
      *
-     * @psalm-return array{result: MovementResult|null, variant: non-empty-string}[] $results
+     * @psalm-return array{result: MovementResult|null, subject: non-empty-string}[] $results
      */
     public function deliver(array $rows): array
     {
@@ -312,7 +313,7 @@ final class CommerceFlowExample
      *
      * @param list<TRow> $rows
      *
-     * @psalm-return array{result: MovementResult|null, variant: non-empty-string}[] $results
+     * @psalm-return array{result: MovementResult|null, subject: non-empty-string}[] $results
      */
     public function acceptReturn(array $rows): array
     {
@@ -324,7 +325,7 @@ final class CommerceFlowExample
      *
      * @param list<TRow> $rows
      *
-     * @psalm-return array{result: MovementResult|null, variant: non-empty-string}[] $results
+     * @psalm-return array{result: MovementResult|null, subject: non-empty-string}[] $results
      */
     public function restockReturn(array $rows): array
     {
@@ -336,7 +337,7 @@ final class CommerceFlowExample
      *
      * @param list<TRow> $rows
      *
-     * @psalm-return array{result: MovementResult|null, variant: non-empty-string}[] $results
+     * @psalm-return array{result: MovementResult|null, subject: non-empty-string}[] $results
      */
     public function markDefective(array $rows): array
     {
@@ -348,7 +349,7 @@ final class CommerceFlowExample
      *
      * @param list<TRow> $rows
      *
-     * @psalm-return array{result: MovementResult|null, variant: non-empty-string}[] $results
+     * @psalm-return array{result: MovementResult|null, subject: non-empty-string}[] $results
      */
     public function discardDefective(array $rows): array
     {
@@ -518,65 +519,48 @@ final class CommerceFlowExample
      * @param list<TRow>       $rows
      * @param non-empty-string $name
      *
-     * @psalm-return array{result: MovementResult|null, variant: non-empty-string}[] $results
-     */
-    /**
-     * @param list<TRow>       $rows
-     * @param non-empty-string $name
-     *
-     * @psalm-return array{result: MovementResult|null, variant: non-empty-string}[] $results
+     * @psalm-return array{result: MovementResult|null, subject: non-empty-string}[] $results
      */
     private function processNamedCascade(array $rows, string $name): array
     {
         return $this->processBatch($rows, $this->space->getCascade($name));
     }
 
-    // public function testReceivePurchaseOrder(): void
-    // {
-    //     // ** @var array<TRow> $rows */
-    //     $rows = [
-    //         ['var' => 'A', 'mvQtty' => 10, 'loc' => 'sup', 'own' => 'C', 'fs' => 10, 'sd' => 10],
-    //         ['var' => 'A', 'mvQtty' => 10, 'loc' => 'wh1', 'own' => 'C', 'fs' => 20, 'sd' => 01],
-    //         ['var' => 'A', 'mvQtty' => 10, 'loc' => 'sup', 'own' => 'C', 'fs' => 30, 'sd' => 10],
-    //         ['var' => 'A', 'mvQtty' => 10, 'loc' => 'wh1', 'own' => 'C', 'fs' => 40, 'sd' => 01],
-    //         ['var' => 'B', 'mvQtty' => 13, 'loc' => 'sup', 'own' => 'C', 'fs' => 50, 'sd' => 20],
-    //         ['var' => 'B', 'mvQtty' => 13, 'loc' => 'wh1', 'own' => 'C', 'fs' => 60, 'sd' => 20],
-    //         ['var' => 'B', 'mvQtty' => 13, 'loc' => 'sup', 'own' => 'C', 'fs' => 70, 'sd' => 20],
-    //         ['var' => 'B', 'mvQtty' => 13, 'loc' => 'wh1', 'own' => 'C', 'fs' => 80, 'sd' => 20],
-    //     ];
+    public function outgressInventory(InventoryBatch $batch, Repository $repo): void
+    {
+        foreach ($batch->mutations() as $mutation) {
+            $repo->applyDelta(
+                variant: (string) $mutation->subject,
+                slot: $mutation->slot,
+                delta: (int) $mutation->delta,
+            );
+        }
+    }
 
-    //     // This is an purchase order reception, where we move items from supplier to warehouse.
-    //     // If quantity received is higher than quantity ordered (mvQtty > sup-sd), the excess goes to
-    //     // warehouse as forsale (quantity added to `fs`).
-    //     $edges = [
-    //         $this->space->move('sup.C.sd', 'wh*.C.sd'),
-    //     ];
+    /**
+     * @param array<string, mixed> $context
+     *
+     * @return list<array{variant: string, entry: LedgerEntry}>
+     */
+    public function outgressLedger(InventoryBatch $batch, array $context = []): array
+    {
+        $rows = [];
 
-    //     $cascade = Cascade::define('legacy-ingress', static fn (Cascade $cascade) => $cascade
-    //         ->step('*.*.sd', '*.*.fs')
-    //     );
+        foreach ($batch->ledgerEntries($context) as $entry) {
+            $rows[] = [
+                'variant' => (string) $entry->subject,
+                'entry'   => new LedgerEntry(
+                    edge: $entry->edge,
+                    quantity: $entry->quantity,
+                    initialFrom: $entry->initialFrom,
+                    initialTo: $entry->initialTo,
+                    context: $entry->context,
+                ),
+            ];
+        }
 
-    //     $result = $this->processBatch($rows, $plan);
-    // }
-
-    // public function outgress(InventoryBatch $batch, Repository $repo): void
-    // {
-    //     foreach ($batch->getResults() as ['variant' => $variant, 'result' => $result]) {
-    //         if (null === $result) {
-    //             continue;
-    //         }
-
-    //         foreach ($result->mutations() as $mutation) {
-    //             $slot = $mutation->slot();
-
-    //             $repo->applyDelta(
-    //                 variant: $variant,
-    //                 slot: $slot,
-    //                 delta: $mutation->delta(),
-    //             );
-    //         }
-    //     }
-    // }
+        return $rows;
+    }
 }
 
 interface Repository

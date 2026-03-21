@@ -12,30 +12,14 @@ final class BatchItem
     private ?MovementResult $result = null;
 
     /**
-     * @param T         $variant
+     * @param T         $subject
      * @param Inventory $inventory the initial inventory state for this batch item
      */
     public function __construct(
-        private mixed $variant,
-        private int $quantity,
-        private Inventory $inventory,
+        public readonly mixed $subject,
+        public readonly int $quantity,
+        public readonly Inventory $inventory,
     ) {
-    }
-
-    /** @return T */
-    public function variant(): mixed
-    {
-        return $this->variant;
-    }
-
-    public function quantity(): int
-    {
-        return $this->quantity;
-    }
-
-    public function inventory(): Inventory
-    {
-        return $this->inventory;
     }
 
     public function movementResult(): ?MovementResult

@@ -102,7 +102,6 @@ final class Cascade
         return new CascadeStepBuilder($this, $step);
     }
 
-
     /**
      * Add a step that resolves its candidate edges from one or more labeled edge rules.
      *

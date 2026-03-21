@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 namespace Nandan108\SlotFlow;
+
 /**
  * @psalm-import-type TSlotPattern from SlotSpace
  */
@@ -11,7 +12,8 @@ final class SlotRule
     /**
      * The pattern can be a string or an array of dimension-value pairs.
      *
-     * @param array<null|non-empty-string>|null|non-empty-string $pattern
+     * @param array<non-empty-string|null>|non-empty-string|null $pattern
+     *
      * @psalm-param TSlotPattern $pattern
      */
     public function __construct(
@@ -27,8 +29,9 @@ final class SlotRule
      * The pattern can be a string or an array of dimension-value pairs.
      *
      * @param array<int|string, ?non-empty-string>|non-empty-string $pattern
+     * @param array<string, mixed>                                  $meta
+     *
      * @psalm-param TSlotPattern $pattern
-     * @param array<string, mixed> $meta
      */
     public static function allow(string | array | null $pattern, array $meta = []): self
     {
@@ -40,6 +43,7 @@ final class SlotRule
      * The pattern can be a string or an array of dimension-value pairs.
      *
      * @param array<int|string, ?non-empty-string>|non-empty-string $pattern
+     *
      * @psalm-param TSlotPattern $pattern
      */
     public static function deny(string | array | null $pattern): self
@@ -63,6 +67,7 @@ final class SlotRule
      * Create a list of allow rules for the given patterns.
      *
      * @param list<string|array<int|string, ?non-empty-string>> $patterns
+     *
      * @psalm-param list<TSlotPattern> $patterns
      *
      * @return list<SlotRule>

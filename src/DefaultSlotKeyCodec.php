@@ -8,9 +8,10 @@ use Nandan108\SlotFlow\Contracts\SlotCodec;
 use TSlotArrayPattern;
 
 /**
- * @psalm-import-type TSlotArrayPattern from SlotSpace
+ * @psalm-import-type \TSlotArrayPattern from SlotSpace
  * @psalm-import-type TDimensionName from SlotSpace
  * @psalm-import-type TDimensionValue from SlotSpace
+ *
  * @api
  */
 class DefaultSlotKeyCodec implements SlotCodec
@@ -63,6 +64,7 @@ class DefaultSlotKeyCodec implements SlotCodec
 
     /**
      * @param ?array<non-empty-string, ?string> $values
+     *
      * @psalm-param ?array<TDimensionName, null|''|TDimensionValue> $values
      *
      * @return non-empty-string
@@ -91,8 +93,9 @@ class DefaultSlotKeyCodec implements SlotCodec
     }
 
     /**
-     * @psalm-return ?TSlotArrayPattern
      * @return ?array<non-empty-string, ?non-empty-string>
+     *
+     * @psalm-return ?TSlotArrayPattern
      */
     #[\Override]
     public function deserialize(?string $key): ?array
@@ -101,8 +104,9 @@ class DefaultSlotKeyCodec implements SlotCodec
             return null;
         }
         if ($this->isWildcard($key)) {
-            /** @var TSlotArrayPattern $dimensions */
+            /** @var \TSlotArrayPattern $dimensions */
             $dimensions = array_fill_keys($this->space->dimensionNames(), $this->wildcard());
+
             return $dimensions;
         }
 
@@ -113,7 +117,7 @@ class DefaultSlotKeyCodec implements SlotCodec
         }
         $dimensions = array_combine($this->space->dimensionNames(), $exploded);
 
-        /** @var TSlotArrayPattern $dimensions */
+        /** @var \TSlotArrayPattern $dimensions */
         $dimensions = array_map(fn ($v) => $this->isWildcard($v) ? self::WILDCARD : $v, $dimensions); // treat empty and null values as wildcards
 
         // throw if one of the values does not match the expected values for its dimension

@@ -39,7 +39,6 @@ final class DistancePolicy implements EdgeFilterPolicyInterface, EdgeOrderingPol
 
     private function distanceFor(MovementEdge $edge, CascadeContext $ctx): int | float
     {
-        /** @var mixed $distance */
         $distance = $ctx->context['distance'] ?? null;
 
         if (is_callable($distance)) {
@@ -50,7 +49,7 @@ final class DistancePolicy implements EdgeFilterPolicyInterface, EdgeOrderingPol
         }
 
         if (is_array($distance)) {
-            $key = $edge->from->key().'->'.$edge->to->key();
+            $key = $edge->from->key.'->'.$edge->to->key;
             /** @psalm-var mixed */
             $value = $distance[$key] ?? INF;
 

@@ -24,9 +24,9 @@ final class SlotSpaceTest extends TestCase
 
         self::assertSame(['loc', 'state'], $space->dimensionNames());
         self::assertSame(['foo', 'faz', 'bar'], $space->dimensionValues('loc'));
-        self::assertSame('foo.fs', $space->slot('foo.fs')->key());
-        self::assertSame('faz.sd', $space->slot(['faz', 'sd'])->key());
-        self::assertNull($space->slot(null)->dimensions());
+        self::assertSame('foo.fs', $space->slot('foo.fs')->key);
+        self::assertSame('faz.sd', $space->slot(['faz', 'sd'])->key);
+        self::assertNull($space->slot(null)->dimensions);
     }
 
     public function testItRejectsReservedCharactersInDimensionValues(): void
@@ -238,8 +238,8 @@ final class SlotSpaceTest extends TestCase
         ]);
 
         self::assertNotSame($left->nilSlot(), $right->nilSlot());
-        self::assertSame($left, $left->nilSlot()->space());
-        self::assertSame($right, $right->nilSlot()->space());
+        self::assertSame($left, $left->nilSlot()->space);
+        self::assertSame($right, $right->nilSlot()->space);
     }
 
     public function testSimpleCascadeShorthandStoresSourceAndSinkStepsInTheExpectedDirection(): void
@@ -292,9 +292,9 @@ final class SlotSpaceTest extends TestCase
             2,
         );
 
-        self::assertCount(2, $result->events());
-        self::assertSame('(bar.sd) -> (bar.fs)', (string) $result->events()[0]->edge());
-        self::assertSame('(foo.sd) -> (foo.fs)', (string) $result->events()[1]->edge());
+        self::assertCount(2, $result->events);
+        self::assertSame('(bar.sd) -> (bar.fs)', (string) $result->events[0]->edge);
+        self::assertSame('(foo.sd) -> (foo.fs)', (string) $result->events[1]->edge);
     }
 
     public function testCascadeRegistersNamedCascades(): void
@@ -376,6 +376,6 @@ final class SlotSpaceTest extends TestCase
      */
     private function slotKeys(array $slots): array
     {
-        return array_map(static fn ($slot): string => $slot->key(), $slots);
+        return array_map(static fn ($slot): string => $slot->key, $slots);
     }
 }

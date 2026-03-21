@@ -14,19 +14,19 @@ final class BatchMovementEngine
     /**
      * Executes a batch of inventory movements.
      *
-     * @template TVariant
+     * @template TSubject
      *
-     * @param InventoryBatch $batch   the batch of inventory items to move
-     * @param SlotSpace      $space   the slot space used to resolve cascade steps
-     * @param Cascade        $cascade the cascade containing the movement rules
-     * @param array<mixed>   $context execution context forwarded to the cascade engine
-     * @param array<string, scalar|null> $params cascade parameter substitutions forwarded to the cascade engine
+     * @param InventoryBatch             $batch   the batch of inventory items to move
+     * @param SlotSpace                  $space   the slot space used to resolve cascade steps
+     * @param Cascade                    $cascade the cascade containing the movement rules
+     * @param array<mixed>               $context execution context forwarded to the cascade engine
+     * @param array<string, scalar|null> $params  cascade parameter substitutions forwarded to the cascade engine
      *
-     * @psalm-param InventoryBatch<TVariant> $batch
+     * @psalm-param InventoryBatch<TSubject> $batch
      *
      * @return InventoryBatch the batch with updated movement results for each item
      *
-     * @psalm-return InventoryBatch<TVariant>
+     * @psalm-return InventoryBatch<TSubject>
      */
     public function execute(
         InventoryBatch $batch,
@@ -38,10 +38,10 @@ final class BatchMovementEngine
         foreach ($batch->items() as $item) {
             $item->setMovementResult(
                 $this->engine->execute(
-                    $item->inventory(),
+                    $item->inventory,
                     $space,
                     $cascade,
-                    $item->quantity(),
+                    $item->quantity,
                     appContext: $context,
                     params: $params,
                 ),

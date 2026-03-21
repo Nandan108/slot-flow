@@ -20,8 +20,9 @@ final class SlotPattern
     private array $matchingSlots = [];
 
     /**
-     * @psalm-param list<null|TSlotPartial> $partials
      * @param list<array<non-empty-string, non-empty-string>|null> $partials
+     *
+     * @psalm-param list<null|TSlotPartial> $partials
      */
     private function __construct(
         public array $partials,
@@ -30,8 +31,9 @@ final class SlotPattern
     }
 
     /**
-     * @psalm-param TSlotPattern $pattern
      * @param string|array<int|string, ?string>|null $pattern
+     *
+     * @psalm-param TSlotPattern $pattern
      */
     public static function from(string | array | null $pattern, SlotSpace $space): self
     {
@@ -48,7 +50,7 @@ final class SlotPattern
         if (!$this->matchingSlots) {
             foreach ($this->partials as $partial) {
                 foreach ($this->space->matchPartial($partial) as $slot) {
-                    $this->matchingSlots[$slot->key()] = $slot;
+                    $this->matchingSlots[$slot->key] = $slot;
                 }
             }
         }

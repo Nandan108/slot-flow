@@ -18,4 +18,17 @@ final class CascadeContext
         public readonly array $context = [],
     ) {
     }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function slotAttributes(Slot $slot): array
+    {
+        return $this->inventory->slotAttributes($slot);
+    }
+
+    public function slotAttribute(Slot $slot, string $name, mixed $default = null): mixed
+    {
+        return $this->inventory->slotAttribute($slot, $name, $default);
+    }
 }

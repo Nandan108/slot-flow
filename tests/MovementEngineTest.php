@@ -8,7 +8,6 @@ use Nandan108\SlotFlow\AllocationDecision;
 use Nandan108\SlotFlow\Cascade;
 use Nandan108\SlotFlow\CascadeContext;
 use Nandan108\SlotFlow\Inventory;
-use Nandan108\SlotFlow\MovementEdge;
 use Nandan108\SlotFlow\MovementEngine;
 use Nandan108\SlotFlow\SlotSpace;
 use PHPUnit\Framework\TestCase;
@@ -35,11 +34,11 @@ final class MovementEngineTest extends TestCase
             3,
         );
 
-        self::assertSame(0, $result->remaining());
-        self::assertCount(1, $result->events());
+        self::assertSame(0, $result->remaining);
+        self::assertCount(1, $result->events);
         self::assertSame(5, $inventory->get($fooFs));
         self::assertSame(0, $inventory->get($nil));
-        self::assertNull($result->events()[0]->initialFrom());
+        self::assertNull($result->events[0]->initialFrom);
     }
 
     public function testItTreatsNilSinkAsAnOpenEndedOutput(): void
@@ -62,11 +61,11 @@ final class MovementEngineTest extends TestCase
             2,
         );
 
-        self::assertSame(0, $result->remaining());
-        self::assertCount(1, $result->events());
+        self::assertSame(0, $result->remaining);
+        self::assertCount(1, $result->events);
         self::assertSame(0, $inventory->get($fooFs));
         self::assertSame(0, $inventory->get($nil));
-        self::assertNull($result->events()[0]->initialTo());
+        self::assertNull($result->events[0]->initialTo);
     }
 
     public function testItExecutesCascadeWithTheSameGreedySemantics(): void
@@ -82,8 +81,8 @@ final class MovementEngineTest extends TestCase
 
         $result = (new MovementEngine())->execute($inventory, $space, $cascade, 3);
 
-        self::assertSame(1, $result->remaining());
-        self::assertCount(1, $result->events());
+        self::assertSame(1, $result->remaining);
+        self::assertCount(1, $result->events);
         self::assertSame(0, $inventory->get($space->slot('foo.fs')));
         self::assertSame(2, $inventory->get($space->slot('foo.sd')));
     }
@@ -104,6 +103,7 @@ final class MovementEngineTest extends TestCase
             ->move('a|b.fs', 'sink.sd')
             ->allocate(static function (CascadeContext $context): array {
                 $edges = $context->edges;
+
                 return [
                     new AllocationDecision($edges[1], min(2, $context->quantity)),
                     new AllocationDecision($edges[0], $context->quantity),
@@ -112,12 +112,12 @@ final class MovementEngineTest extends TestCase
 
         $result = (new MovementEngine())->execute($inventory, $space, $cascade, 3);
 
-        self::assertSame(0, $result->remaining());
-        self::assertCount(2, $result->events());
-        self::assertSame('b.fs', $result->events()[0]->edge()->from->key());
-        self::assertSame(2, $result->events()[0]->quantity());
-        self::assertSame('a.fs', $result->events()[1]->edge()->from->key());
-        self::assertSame(1, $result->events()[1]->quantity());
+        self::assertSame(0, $result->remaining);
+        self::assertCount(2, $result->events);
+        self::assertSame('b.fs', $result->events[0]->edge->from->key);
+        self::assertSame(2, $result->events[0]->quantity);
+        self::assertSame('a.fs', $result->events[1]->edge->from->key);
+        self::assertSame(1, $result->events[1]->quantity);
     }
 
     public function testCascadeCanReverseConditionallyAndFlipEdges(): void
@@ -150,9 +150,9 @@ final class MovementEngineTest extends TestCase
 
         $result = (new MovementEngine())->execute($inventory, $space, $cascade, 2);
 
-        self::assertSame(0, $result->remaining());
-        self::assertCount(1, $result->events());
-        self::assertSame('(foo.fs) -> (sink.sd)', (string) $result->events()[0]->edge());
+        self::assertSame(0, $result->remaining);
+        self::assertCount(1, $result->events);
+        self::assertSame('(foo.fs) -> (sink.sd)', (string) $result->events[0]->edge);
     }
 
     public function testItCanSubstituteCascadeParametersBeforePatternExpansion(): void
@@ -176,15 +176,15 @@ final class MovementEngineTest extends TestCase
             $cascade,
             3,
             appContext: ['params' => [
-                'loc' => 'wh1',
-                'own' => 'C',
+                'loc'   => 'wh1',
+                'own'   => 'C',
                 'state' => 'sd',
             ]],
         );
 
-        self::assertSame(0, $result->remaining());
-        self::assertCount(2, $result->events());
-        self::assertSame('(sup.C.sd) -> (wh1.C.sd)', (string) $result->events()[0]->edge());
-        self::assertSame('(nil) -> (wh1.C.fs)', (string) $result->events()[1]->edge());
+        self::assertSame(0, $result->remaining);
+        self::assertCount(2, $result->events);
+        self::assertSame('(sup.C.sd) -> (wh1.C.sd)', (string) $result->events[0]->edge);
+        self::assertSame('(nil) -> (wh1.C.fs)', (string) $result->events[1]->edge);
     }
 }

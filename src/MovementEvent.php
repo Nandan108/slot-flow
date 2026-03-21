@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Nandan108\SlotFlow;
 
 /**
- * @template TQtty of int|float
+ * @template-covariant TQtty of int|float
  */
 final class MovementEvent
 {
@@ -15,26 +15,11 @@ final class MovementEvent
      * @psalm-param ?TQtty $initialTo
      **/
     public function __construct(
-        private MovementEdge $edge,
-        private int | float $quantity,
-        private int | float | null $initialFrom,
-        private int | float | null $initialTo,
+        public readonly MovementEdge $edge,
+        public readonly int | float $quantity,
+        public readonly int | float | null $initialFrom,
+        public readonly int | float | null $initialTo,
     ) {
-    }
-
-    public function edge(): MovementEdge
-    {
-        return $this->edge;
-    }
-
-    public function initialFrom(): int | float | null
-    {
-        return $this->initialFrom;
-    }
-
-    public function initialTo(): int | float | null
-    {
-        return $this->initialTo;
     }
 
     public function finalFrom(): int | float | null
@@ -58,10 +43,35 @@ final class MovementEvent
     }
 
     /**
-     * @psalm-return TQtty
+     * @return list<InventoryMutation>
      */
-    public function quantity(): int | float
+    public function mutations(): array
     {
-        return $this->quantity;
+        /** @var list<InventoryMutation> $mutations */
+        $mutations = [];
+
+        if (!$this->edge->from->isNil()) {
+            $mutations[] = new InventoryMutation($this->edge->from, -$this->quantity);
+        }
+
+        if (!$this->edge->to->isNil()) {
+            $mutations[] = new InventoryMutation($this->edge->to, $this->quantity);
+        }
+
+        return $mutations;
+    }
+
+    /**
+     * @param array<string, mixed> $context
+     */
+    public function ledgerEntry(array $context = []): LedgerEntry
+    {
+        return new LedgerEntry(
+            edge: $this->edge,
+            quantity: $this->quantity,
+            initialFrom: $this->initialFrom,
+            initialTo: $this->initialTo,
+            context: $context,
+        );
     }
 }

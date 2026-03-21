@@ -16,7 +16,7 @@ use TSlotArrayPattern;
  * @psalm-type TSlotValues array<TDimensionName, TDimensionValue> a full associative specification of concrete dimension values; all dimensions must be present and all values must be concrete; used as a slot pattern that matches exactly one slot
  * @psalm-type TDimensionValuePattern ?non-empty-string a null or string pattern to match dimension values. Used in slot patterns. String may contain wildcards as allowed by codec. Null is equivaldent to the match-all wildcard.
  * @psalm-type TSlotTuplePattern list<TDimensionValuePattern> a tuple of dimension value patterns in the order of dimension names, used as an alternative way to specify a slot pattern.
- * @psalm-type TSlotArrayPattern array<TDimensionName, TDimensionValuePattern> a pattern specified as an associative array of dimension name to dimension value pattern, where missing or null values are treated as wildcards that match any value for the dimension. Used as a slot pattern that can match multiple slots.
+ * @psalm-type \TSlotArrayPattern array<TDimensionName, TDimensionValuePattern> a pattern specified as an associative array of dimension name to dimension value pattern, where missing or null values are treated as wildcards that match any value for the dimension. Used as a slot pattern that can match multiple slots.
  * @psalm-type TSlotPattern TSlotTuplePattern|TSlotArrayPattern|TSlotKey|null a slot pattern can be:
  *  - a string slot pattern (e.g. "sup.*.foo|bar") that is deserialized using the codec
  *  - an tuple: array value pattern in the exact order and number of dimensions defined in the slot space, where each value can be a specific value or a wildcard (null or wildcard string as defined by codec)
@@ -132,7 +132,7 @@ final class SlotSpace
             $ruleSlots = SlotPattern::from($rule->pattern, $this)->expand();
             if ($rule->allow) {
                 foreach ($ruleSlots as $slotKey => $slot) {
-                    $slots[$slotKey] = ($slots[$slotKey] ?? $slot)->meta($rule->attributes);
+                    $slots[$slotKey] = ($slots[$slotKey] ?? $slot)->withMeta($rule->attributes);
                 }
 
                 continue;
@@ -186,7 +186,7 @@ final class SlotSpace
      */
     public function getEdgesFrom(Slot $from): array
     {
-        $fromKey = $from->key();
+        $fromKey = $from->key;
         $edges = $this->outgoingEdgeByOriginSlot[$fromKey] ?? [];
         if ($edges) {
             return $edges;
@@ -292,7 +292,7 @@ final class SlotSpace
             }
             $pattern = array_combine($this->dimensionNames, $pattern);
         } else {
-            /** @var array<non-empty-string, null|string> $pattern */
+            /** @var array<non-empty-string, string|null> $pattern */
             $this->validateKnownDimensionNames(array_keys($pattern));
         }
 
@@ -368,7 +368,7 @@ final class SlotSpace
                 }
             }
 
-            /** @var array<non-empty-string, null|''|TDimensionValue> $keyOrValues */
+            /** @var array<non-empty-string, ''|TDimensionValue|null> $keyOrValues */
             $key = $this->codec->serialize($keyOrValues);
         } else {
             $key = $keyOrValues;
