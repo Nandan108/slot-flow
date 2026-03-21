@@ -6,8 +6,16 @@ namespace Nandan108\SlotFlow\Contracts;
 
 use Nandan108\SlotFlow\SlotSpace;
 
-interface SlotKeyCodec
+/**
+ * @psalm-import-type TSlotArrayPattern from SlotSpace
+ * @psalm-import-type TDimensionName from SlotSpace
+ * @psalm-import-type TDimensionValue from SlotSpace
+ *
+ * @api
+ */
+interface SlotCodec
 {
+    /** @psalm-suppress PossiblyUnusedMethod */
     public function __construct(SlotSpace $space);
 
     public function isWildcard(?string $value): bool;
@@ -20,6 +28,7 @@ interface SlotKeyCodec
      */
     public function nilKey(): string;
 
+    /** @return non-empty-string */
     public function dimensionSeparator(): string;
 
     /** @return non-empty-string */
@@ -28,12 +37,18 @@ interface SlotKeyCodec
     /**
      * @param ?array<non-empty-string, ?string> $values
      *
+     * @psalm-param ?array<TDimensionName, null|''|TDimensionValue> $values
+     *
      * @return non-empty-string
      */
     public function serialize(?array $values): string;
 
     /**
-     * @return ?array<non-empty-string, string>
+     * @return ?array<non-empty-string, ?non-empty-string>
+     *
+     * @psalm-return ?TSlotArrayPattern
+     *
+     * @throws \InvalidArgumentException
      */
     public function deserialize(?string $key): ?array;
 

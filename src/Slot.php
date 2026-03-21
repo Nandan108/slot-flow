@@ -4,18 +4,18 @@ declare(strict_types=1);
 
 namespace Nandan108\SlotFlow;
 
-final class SlotKey
+final class Slot
 {
     /**
-     * Summary of __construct.
-     *
      * @param non-empty-string                           $key
      * @param ?array<non-empty-string, non-empty-string> $dimensions
+     * @param array<string, mixed>                       $attributes
      */
     public function __construct(
         private string $key,
         private ?array $dimensions,
         private SlotSpace $space,
+        public readonly array $attributes = [],
     ) {
     }
 
@@ -57,17 +57,29 @@ final class SlotKey
         return $this->dimensions[$name] ?? null;
     }
 
-    public function equals(SlotKey $other): bool
+    public function equals(Slot $other): bool
     {
         return $this->key === $other->key;
     }
 
     /**
+     * Return a copy of the slot with additional metadata attributes.
+     *
+     * Existing attributes keep precedence over newly provided ones.
+     *
+     * @param array<string, mixed> $attributes
+     */
+    public function meta(array $attributes): self
+    {
+        return new self($this->key, $this->dimensions, $this->space, $attributes + $this->attributes);
+    }
+
+    /**
      * @param array<non-empty-string, non-empty-string> $overrides
      *
-     * @return array<SlotKey> an array containing the same slot, with values overriden by the override.
-     *                        May return an empty array if the result after override is invalid (i.e. doesn't exist in the slot space).
-     *                        If this is a nil slot, returns an array of all slots matching the overrides
+     * @return array<Slot> an array containing the same slot, with values overriden by the override.
+     *                     May return an empty array if the result after override is invalid (i.e. doesn't exist in the slot space).
+     *                     If this is a nil slot, returns an array of all slots matching the overrides
      */
     public function with(?array $overrides): array
     {
@@ -82,6 +94,12 @@ final class SlotKey
         $slot = $this->space->trySlot($newDimensions);
 
         return $slot ? [$this->space->slot($newDimensions)] : [];
+    }
+
+    /** @return array<non-empty-string, MovementEdge> */
+    public function outgoingEdges(): array
+    {
+        return $this->space->getEdgesFrom($this);
     }
 
     /** @return non-empty-string */

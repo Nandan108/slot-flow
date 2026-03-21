@@ -4,11 +4,11 @@ declare(strict_types=1);
 
 namespace Nandan108\SlotFlow;
 
-final class MovementStep
+final class AllocationDecision
 {
     public function __construct(
         public readonly MovementEdge $edge,
-        public readonly int | float | null $quantity,
+        public readonly int | float $quantity,
     ) {
     }
 }

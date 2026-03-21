@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Tests;
 
+use Nandan108\SlotFlow\Cascade;
+use Nandan108\SlotFlow\CascadeContext;
 use Nandan108\SlotFlow\DefaultSlotKeyCodec;
 use Nandan108\SlotFlow\EdgeRule;
 use Nandan108\SlotFlow\MovementEdge;
@@ -138,6 +140,31 @@ final class SlotSpaceTest extends TestCase
         $space->slot('foo.sd');
     }
 
+    public function testApplySlotRulesAccumulatesMetadataFromMatchingAllowRules(): void
+    {
+        $space = SlotSpace::define([
+            'loc'   => ['foo', 'bar'],
+            'state' => ['fs', 'sd'],
+        ])->applySlotRules([
+            SlotRule::allow('foo.*', ['zone' => 'forward']),
+            SlotRule::allow('*.fs', ['temperature' => 'ambient']),
+            SlotRule::allow('foo.fs', ['zone' => 'reserve', 'channel' => 'web']),
+        ]);
+
+        self::assertSame(
+            ['zone' => 'reserve', 'channel' => 'web', 'temperature' => 'ambient'],
+            $space->slot('foo.fs')->attributes,
+        );
+        self::assertSame(
+            ['zone' => 'forward'],
+            $space->slot('foo.sd')->attributes,
+        );
+        self::assertSame(
+            ['temperature' => 'ambient'],
+            $space->slot('bar.fs')->attributes,
+        );
+    }
+
     public function testEdgesBetweenFillsMissingTargetDimensionsFromOrigin(): void
     {
         $space = SlotSpace::define([
@@ -157,13 +184,13 @@ final class SlotSpaceTest extends TestCase
             'loc'   => ['foo'],
             'state' => ['fs', 'sd', 'ret'],
         ])->applyEdgeRules([
-            EdgeRule::allow('advance', 'foo.fs', 'foo.sd|ret'),
+            EdgeRule::allowLabeled('advance', 'foo.fs', 'foo.sd|ret'),
             EdgeRule::deny(null, 'foo.fs', 'foo.ret'),
         ]);
 
         self::assertSame(
             ['foo.sd'],
-            array_keys($space->getEdgesFrom($space->slot('foo.fs'))),
+            array_keys($space->slot('foo.fs')->outgoingEdges()),
         );
     }
 
@@ -177,11 +204,11 @@ final class SlotSpaceTest extends TestCase
         $space = $this->makeWarehouseSpace()
             ->applyEdgeRules(
                 RuleSet::from(
-                    EdgeRule::allow('advance', 'foo.fs', 'foo.sd'),
+                    EdgeRule::allowLabeled('advance', 'foo.fs', 'foo.sd'),
                 )->meta(['channel' => 'ops']),
             );
 
-        $edges = $space->getEdgesFrom($space->slot('foo.fs'));
+        $edges = $space->slot('foo.fs')->outgoingEdges();
 
         self::assertSame(['channel' => 'ops'], $edges['foo.sd']->attributes);
     }
@@ -189,11 +216,10 @@ final class SlotSpaceTest extends TestCase
     public function testGetEdgesFromUsesNullForSinkEdges(): void
     {
         $space = $this->makeWarehouseSpace()->applyEdgeRules([
-            EdgeRule::allow('complete', 'foo.sd', null),
+            EdgeRule::allowLabeled('complete', 'foo.sd', null),
         ]);
 
-        $edges = array_values($space->getEdgesFrom($space->slot('foo.sd')));
-
+        $edges = array_values($space->slot('foo.sd')->outgoingEdges());
         self::assertCount(1, $edges);
         self::assertSame($space->nilSlot(), $edges[0]->to);
         self::assertSame($space->slot(null), $edges[0]->to);
@@ -216,39 +242,91 @@ final class SlotSpaceTest extends TestCase
         self::assertSame($right, $right->nilSlot()->space());
     }
 
-    public function testCascadeCreatesSourceAndSinkEdgesInTheExpectedDirection(): void
+    public function testSimpleCascadeShorthandStoresSourceAndSinkStepsInTheExpectedDirection(): void
     {
-        $space = $this->makeWarehouseSpace();
+        $space = $this->makeWarehouseSpace()
+            ->cascade('source-sink', [
+                [null, 'foo.fs'],
+                ['foo.fs', null],
+            ]);
 
-        $path = $space->cascade([
-            [null, 'foo.fs'],
-            ['foo.fs', null],
-        ], false);
+        $cascade = $space->getCascade('source-sink');
 
-        self::assertTrue($path->edges()[0]->from->isNil());
-        self::assertSame('foo.fs', $path->edges()[0]->to->key());
-        self::assertSame('foo.fs', $path->edges()[1]->from->key());
-        self::assertSame($space->slot(null), $path->edges()[1]->to);
+        self::assertCount(2, $cascade->steps());
+        self::assertNull($cascade->steps()[0]->from);
+        self::assertSame('foo.fs', $cascade->steps()[0]->to);
+        self::assertSame('foo.fs', $cascade->steps()[1]->from);
+        self::assertNull($cascade->steps()[1]->to);
+    }
+
+    public function testSimpleCascadeShorthandArraySyntaxCompilesSteps(): void
+    {
+        $space = $this->makeWarehouseSpace()
+            ->cascade('book', [
+                ['foo.fs', 'foo.sd'],
+                ['bar.fs', 'bar.sd'],
+            ]);
+
+        self::assertCount(2, $space->getCascade('book')->steps());
+        self::assertSame('foo.fs', $space->getCascade('book')->steps()[0]->from);
+        self::assertSame('bar.sd', $space->getCascade('book')->steps()[1]->to);
     }
 
     public function testCascadeCanReverseAndFlipEdges(): void
     {
         $space = $this->makeWarehouseSpace();
+        $inventory = new \Nandan108\SlotFlow\Inventory($space, [
+            [$space->slot('foo.sd'), 1],
+            [$space->slot('bar.sd'), 1],
+        ]);
 
-        $path = $space->cascade([
-            ['foo.fs', 'foo.sd'],
-            ['bar.fs', 'bar.sd'],
-        ], true);
+        $cascade = Cascade::define('reverse', static fn (Cascade $cascade) => $cascade
+            ->move('foo.fs', 'foo.sd')
+            ->move('bar.fs', 'bar.sd'))
+            ->reverseIf(true, true);
 
-        self::assertSame('(bar.sd) -> (bar.fs)', (string) $path->edges()[0]);
-        self::assertSame('(foo.sd) -> (foo.fs)', (string) $path->edges()[1]);
+        $result = (new \Nandan108\SlotFlow\MovementEngine())->execute(
+            $inventory,
+            $space,
+            $cascade,
+            2,
+        );
+
+        self::assertCount(2, $result->events());
+        self::assertSame('(bar.sd) -> (bar.fs)', (string) $result->events()[0]->edge());
+        self::assertSame('(foo.sd) -> (foo.fs)', (string) $result->events()[1]->edge());
+    }
+
+    public function testCascadeRegistersNamedCascades(): void
+    {
+        $space = $this->makeWarehouseSpace()
+            ->cascade('book', static function (Cascade $cascade) {
+                return $cascade
+                    ->move('*.fs', '*.sd')
+                    ->filter(static fn (CascadeContext $context): array => $context->edges);
+            });
+
+        self::assertArrayHasKey('book', $space->cascades);
+        self::assertSame('book', $space->cascades['book']->name());
+        self::assertCount(1, $space->cascades['book']->steps());
+    }
+
+    public function testCascadeRejectsDuplicateNames(): void
+    {
+        $space = $this->makeWarehouseSpace()
+            ->cascade('book', static fn (Cascade $cascade) => $cascade->move('*.fs', '*.sd'));
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage("Cascade 'book' already defined");
+
+        $space->cascade('book', static fn (Cascade $cascade) => $cascade->move('*.sd', '*.fs'));
     }
 
     public function testBuilderCompilesSlotAndEdgeRules(): void
     {
         $space = (new SlotSpaceBuilder($this->makeWarehouseSpace()))
             ->slotRules([SlotRule::deny('bar.*')])
-            ->edgeRules([EdgeRule::allow('advance', 'foo.fs', 'foo.sd')])
+            ->edgeRules([EdgeRule::allowLabeled('advance', 'foo.fs', 'foo.sd')])
             ->compile();
 
         self::assertSame(['foo.sd'], array_keys($space->getEdgesFrom($space->slot('foo.fs'))));
@@ -292,7 +370,7 @@ final class SlotSpaceTest extends TestCase
     }
 
     /**
-     * @param list<\Nandan108\SlotFlow\SlotKey> $slots
+     * @param list<\Nandan108\SlotFlow\Slot> $slots
      *
      * @return list<string>
      */

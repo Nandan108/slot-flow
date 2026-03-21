@@ -10,8 +10,10 @@ namespace Nandan108\SlotFlow;
 final class MovementResult
 {
     /**
-     * @param list<MovementEvent<TQtty>> $events
-     * @param TQtty                      $remaining
+     * @param list<MovementEvent> $events
+     *
+     * @psalm-param list<MovementEvent<TQtty>> $events
+     * @psalm-param TQtty                      $remaining
      */
     public function __construct(
         private array $events,
@@ -19,13 +21,19 @@ final class MovementResult
     ) {
     }
 
-    /** @return list<MovementEvent<TQtty>> */
+    /**
+     * @return list<MovementEvent>
+     *
+     * @psalm-return list<MovementEvent<TQtty>>
+     */
     public function events(): array
     {
         return $this->events;
     }
 
-    /** @return TQtty */
+    /**
+     * @psalm-return TQtty
+     */
     public function remaining(): int | float
     {
         return $this->remaining;

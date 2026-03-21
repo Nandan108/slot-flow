@@ -6,10 +6,17 @@ namespace Nandan108\SlotFlow;
 
 /**
  * @template TVariant
+ *
+ * @psalm-import-type TSlotPattern from SlotSpace
+ * @psalm-import-type TSlotValues from SlotSpace
  */
 final class InventoryBatch
 {
-    /** @param array<BatchItem<TVariant>> $items */
+    /**
+     * @param array<BatchItem> $items
+     *
+     * @psalm-param array<BatchItem<TVariant>> $items
+     */
     public function __construct(
         private array $items,
     ) {
@@ -28,7 +35,7 @@ final class InventoryBatch
      *
      * @psalm-param iterable<TRow>                                             $rows
      * @psalm-param \Closure(TRow): TFactoryVariant                            $variantGetter
-     * @psalm-param \Closure(TRow): list<array{SlotKey|array<non-empty-string,string>, int}> $slotRowGetter
+     * @psalm-param \Closure(TRow): list<array{Slot|TSlotValues, int}> $slotRowGetter
      * @psalm-param \Closure(list<TRow>): int                                  $quantityGetter
      * @psalm-param ?\Closure(TFactoryVariant): non-empty-string               $variantIdGetter
      *
@@ -77,7 +84,11 @@ final class InventoryBatch
         return new self($batchItems);
     }
 
-    /** @return array<BatchItem<TVariant>> */
+    /**
+     * @return array<BatchItem>
+     *
+     * @psalm-return array<BatchItem<TVariant>>
+     */
     public function items(): array
     {
         return $this->items;
@@ -86,7 +97,9 @@ final class InventoryBatch
     /**
      * Returns the movement results for each item in the batch.
      *
-     * @return array<array{variant: TVariant, result: MovementResult|null}>
+     * @return array<array{variant: mixed, result: MovementResult|null}>
+     *
+     * @psalm-return array<array{variant: TVariant, result: MovementResult|null}>
      */
     public function results(): array
     {

@@ -11,11 +11,22 @@
     </projectFiles>
 
     <issueHandlers>
-        <!-- <UnusedClass>
+        <UnusedClass>
             <errorLevel type="suppress">
                 <directory name="tests" />
             </errorLevel>
         </UnusedClass>
+        <UnusedClosureParam>
+            <errorLevel type="suppress">
+                <directory name="tests" />
+            </errorLevel>
+        </UnusedClosureParam>
+        <MissingOverrideAttribute>
+            <errorLevel type="suppress">
+                <directory name="tests" />
+            </errorLevel>
+        </MissingOverrideAttribute>
+    <!--
         <MixedArgument>
             <errorLevel type="suppress">
                 <directory name="tests" />

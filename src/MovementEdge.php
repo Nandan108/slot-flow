@@ -7,16 +7,11 @@ namespace Nandan108\SlotFlow;
 final class MovementEdge
 {
     public function __construct(
-        public readonly SlotKey $from,
-        public readonly SlotKey $to,
+        public readonly Slot $from,
+        public readonly Slot $to,
         public readonly ?string $label = null,
         public readonly array $attributes = [],
     ) {
-    }
-
-    public function flip(): self
-    {
-        return new self($this->to, $this->from, $this->label, $this->attributes);
     }
 
     public function __toString(): string

@@ -4,12 +4,16 @@ declare(strict_types=1);
 
 namespace Nandan108\SlotFlow;
 
-use Nandan108\SlotFlow\Contracts\SlotKeyCodec;
+use Nandan108\SlotFlow\Contracts\SlotCodec;
+use TSlotArrayPattern;
 
 /**
+ * @psalm-import-type TSlotArrayPattern from SlotSpace
+ * @psalm-import-type TDimensionName from SlotSpace
+ * @psalm-import-type TDimensionValue from SlotSpace
  * @api
  */
-class DefaultSlotKeyCodec implements SlotKeyCodec
+class DefaultSlotKeyCodec implements SlotCodec
 {
     public const string SEPARATOR = '.';
     public const string WILDCARD = '*';
@@ -59,6 +63,7 @@ class DefaultSlotKeyCodec implements SlotKeyCodec
 
     /**
      * @param ?array<non-empty-string, ?string> $values
+     * @psalm-param ?array<TDimensionName, null|''|TDimensionValue> $values
      *
      * @return non-empty-string
      */
@@ -86,7 +91,8 @@ class DefaultSlotKeyCodec implements SlotKeyCodec
     }
 
     /**
-     * @return ?array<non-empty-string, string>
+     * @psalm-return ?TSlotArrayPattern
+     * @return ?array<non-empty-string, ?non-empty-string>
      */
     #[\Override]
     public function deserialize(?string $key): ?array
@@ -94,6 +100,12 @@ class DefaultSlotKeyCodec implements SlotKeyCodec
         if (null === $key || '' === $key || self::NIL_KEY === $key) {
             return null;
         }
+        if ($this->isWildcard($key)) {
+            /** @var TSlotArrayPattern $dimensions */
+            $dimensions = array_fill_keys($this->space->dimensionNames(), $this->wildcard());
+            return $dimensions;
+        }
+
         $exploded = explode(self::SEPARATOR, $key);
         // throw if the number of exploded parts does not match the number of dimensions
         if (count($exploded) !== count($this->space->dimensionNames())) {
@@ -101,6 +113,7 @@ class DefaultSlotKeyCodec implements SlotKeyCodec
         }
         $dimensions = array_combine($this->space->dimensionNames(), $exploded);
 
+        /** @var TSlotArrayPattern $dimensions */
         $dimensions = array_map(fn ($v) => $this->isWildcard($v) ? self::WILDCARD : $v, $dimensions); // treat empty and null values as wildcards
 
         // throw if one of the values does not match the expected values for its dimension
@@ -180,10 +193,7 @@ class DefaultSlotKeyCodec implements SlotKeyCodec
     {
         $pattern = $pattern ?? self::WILDCARD ?: self::WILDCARD; // normalize null to wildcard
 
-        $values = $this->space->dimensions()[$dimension] ?? null;
-        if (null === $values) {
-            throw new \InvalidArgumentException("Unknown dimension: $dimension");
-        }
+        $values = $this->space->dimensionValues($dimension);
 
         $allMatches = [];
 

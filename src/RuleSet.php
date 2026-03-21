@@ -10,7 +10,9 @@ namespace Nandan108\SlotFlow;
 final class RuleSet
 {
     /**
-     * @param array<TRuleType|RuleSet<TRuleType>> $rules
+     * @param array<SlotRule|EdgeRule|RuleSet> $rules
+     *
+     * @psalm-param array<TRuleType|RuleSet<TRuleType>> $rules
      */
     public function __construct(
         public array $rules,
@@ -20,9 +22,9 @@ final class RuleSet
     /**
      * @template TFromRuleType of SlotRule|EdgeRule
      *
-     * @param TFromRuleType|RuleSet<TFromRuleType> ...$rules
+     * @psalm-param TFromRuleType|RuleSet<TFromRuleType> ...$rules
      *
-     * @return self<TFromRuleType>
+     * @psalm-return self<TFromRuleType>
      */
     public static function from(SlotRule | EdgeRule | RuleSet ...$rules): self
     {
@@ -30,19 +32,19 @@ final class RuleSet
     }
 
     /**
-     * Apply $attribute metadata to all EdgeRules in the RuleSet.
+     * Apply $attribute metadata to all rules in the RuleSet.
      * This method recursively applies the metadata to any nested RuleSets as well.
      *
      * @param array<string, mixed> $attributes The metadata attributes to apply
      *
-     * @return self<TRuleType> A new RuleSet instance with the metadata applied to all EdgeRules
+     * @return self A new RuleSet instance with the metadata applied to all contained rules
+     *
+     * @psalm-return self<TRuleType>
      */
     public function meta(array $attributes): self
     {
         $rules = array_map(
-            fn ($rule) => $rule instanceof EdgeRule || $rule instanceof RuleSet
-                ? $rule->meta($attributes)
-                : $rule,
+            fn ($rule) => $rule->meta($attributes),
             $this->rules,
         );
 
@@ -53,7 +55,9 @@ final class RuleSet
     /**
      * Recursively flatten the RuleSet and return all rules as a single array.
      *
-     * @return list<TRuleType>
+     * @return list<EdgeRule>|list<SlotRule> a flat list of all rules contained in the RuleSet, including those in nested RuleSets
+     *
+     * @psalm-return list<TRuleType>
      */
     public function all(): array
     {

@@ -10,9 +10,9 @@ namespace Nandan108\SlotFlow;
 final class MovementEvent
 {
     /**
-     * @param TQtty  $quantity
-     * @param ?TQtty $initialFrom
-     * @param ?TQtty $initialTo
+     * @psalm-param TQtty  $quantity
+     * @psalm-param ?TQtty $initialFrom
+     * @psalm-param ?TQtty $initialTo
      **/
     public function __construct(
         private MovementEdge $edge,
@@ -57,7 +57,9 @@ final class MovementEvent
         return $this->initialTo + $this->quantity;
     }
 
-    /** @return TQtty */
+    /**
+     * @psalm-return TQtty
+     */
     public function quantity(): int | float
     {
         return $this->quantity;

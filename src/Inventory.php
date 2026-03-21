@@ -8,48 +8,75 @@ namespace Nandan108\SlotFlow;
  * An instance of this class represents the inventory state of a single SKU,
  * as a mapping of slot keys to corresponding quantities.
  *
- * @template TQtty of int|float
+ * @psalm-import-type TSlotValues from SlotSpace
+ *
+ * @psalm-type TQtty = int|float
+ * @psalm-type TInventoryTuple = array{Slot|TSlotValues, TQtty}
  */
 final class Inventory
 {
-    /** @var array<string, TQtty> */
+    /** @psalm-var array<string, TQtty> */
     private array $quantities = [];
 
     /**
-     * @param array<array{SlotKey, TQtty}> $tuples
+     * @param array<array{Slot, int|float}> $tuples
+     *
+     * @psalm-param list<TInventoryTuple> $tuples
      */
-    public function __construct(array $tuples = [])
+    public function __construct(private SlotSpace $space, array $tuples = [])
     {
-        $this->set($tuples);
+        foreach ($tuples as $tuple) {
+            [$slot, $quantity] = $tuple;
+            if ($slot instanceof Slot) {
+                $key = $slot->key();
+            } else {
+                // @psalm-suppress InvalidArgument because we allow both Slot and TSlotValues in the tuple
+                $key = $space->slot($slot)->key();
+            }
+            $this->quantities[$key] = $quantity;
+        }
+        $this->setTuple($tuples);
     }
 
-    /** @return TQtty */
-    public function get(SlotKey $slot): int | float
+    /**
+     * @psalm-return TQtty
+     */
+    public function get(Slot $slot): int | float
     {
         /** @var TQtty */
         return $this->quantities[(string) $slot] ?? 0;
     }
 
     /**
-     * @param SlotKey|array<array{SlotKey, TQtty}> $slots
-     * @param ?TQtty                               $quantity
+     * Set the inventory state using a list of slot-quantity tuples, replacing any existing quantities.
+     *
+     * @param array<array{Slot, int|float}> $slots
+     *
+     * @psalm-param list<TInventoryTuple> $slots
      */
-    public function set(SlotKey | array $slots, float | int | null $quantity = null): void
+    public function setTuple(array $slots): void
     {
-        if (!is_array($slots)) {
-            $slots = [[$slots, $quantity]];
-        }
-        /** @var array<array{SlotKey, TQtty}> $slots */
         foreach ($slots as $tuple) {
-            [$s, $q] = $tuple;
-            $this->quantities[(string) $s] = $q;
+            [$slot, $quantity] = $tuple;
+            $key = ($slot instanceof Slot ? $slot : $this->space->slot($slot))->key();
+            $this->quantities[$key] = $quantity;
         }
     }
 
-    /** @param TQtty $delta */
-    public function add(SlotKey $slot, int | float $delta): void
+    /**
+     * Set the quantity for a given slot, replacing any existing quantity.
+     */
+    public function setSlotQtty(Slot $slot, int | float $quantity): void
     {
-        $key = (string) $slot;
+        $this->quantities[$slot->key()] = $quantity;
+    }
+
+    /**
+     * @psalm-param TQtty $delta
+     */
+    public function add(Slot $slot, int | float $delta): void
+    {
+        $key = $slot->key();
         /** @var TQtty */
         $zero = 0;
         $this->quantities[$key] ??= $zero;
@@ -59,7 +86,11 @@ final class Inventory
         $this->quantities[$key] += $delta;
     }
 
-    /** @return array<string, TQtty> */
+    /**
+     * @return array<string, int|float>
+     *
+     * @psalm-return array<string, TQtty>
+     */
     public function all(): array
     {
         return $this->quantities;
@@ -67,7 +98,7 @@ final class Inventory
 
     public function copy(): self
     {
-        $clone = new self();
+        $clone = new self($this->space);
         $clone->quantities = $this->quantities;
 
         return $clone;
@@ -80,20 +111,15 @@ final class Inventory
      * @param \Closure $resolver closure to resolve slot dimensions and quantity from a row
      *
      * @psalm-param iterable<TRow>                                             $rows
-     * @psalm-param \Closure(TRow): list<array{SlotKey|array<non-empty-string,string>, TQtty}> $resolver
+     * @psalm-param \Closure(TRow, SlotSpace): list<TInventoryTuple> $resolver
      */
-    public function addFromRows(
-        SlotSpace $space,
-        array $rows,
-        \Closure $resolver,
-    ): self {
+    public function addFromRows(array $rows, \Closure $resolver): self
+    {
         /** @var TRow $row */
         foreach ($rows as $row) {
-            foreach ($resolver($row) as [$dimensions, $quantity]) {
-                $this->add(
-                    $dimensions instanceof SlotKey ? $dimensions : $space->slot($dimensions),
-                    $quantity,
-                );
+            foreach ($resolver($row, $this->space) as [$slot, $quantity]) {
+                $slot = ($slot instanceof Slot ? $slot : $this->space->slot($slot));
+                $this->add($slot, $quantity);
             }
         }
 
@@ -106,15 +132,14 @@ final class Inventory
      * @param iterable $rows
      * @param \Closure $resolver closure to resolve slot dimensions and quantity from a row
      *
-     * @psalm-param iterable<TRow>                                             $rows
-     * @psalm-param \Closure(TRow): list<array{SlotKey|array<non-empty-string,string>, TQtty}> $resolver
+     * @psalm-param iterable<TRow> $rows
+     * @psalm-param \Closure(TRow, SlotSpace): list<TInventoryTuple> $resolver
      */
     public static function fromRows(
         SlotSpace $space,
         array $rows,
         \Closure $resolver,
-        ?Inventory $inventory = null,
     ): self {
-        return (new self())->addFromRows($space, $rows, $resolver);
+        return (new self($space))->addFromRows($rows, $resolver);
     }
 }

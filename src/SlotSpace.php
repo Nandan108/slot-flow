@@ -4,46 +4,61 @@ declare(strict_types=1);
 
 namespace Nandan108\SlotFlow;
 
-use Nandan108\SlotFlow\Contracts\SlotKeyCodec;
+use Nandan108\SlotFlow\Contracts\SlotCodec;
+use TSlotArrayPattern;
 
+/**
+ * @psalm-type TDimensionName = non-empty-string the name and value of a dimension must be non-empty strings
+ * @psalm-type TDimensionValue = non-empty-string dimension values must be non-empty strings, and each dimension must have at least one value
+ * @psalm-type TSlotKey = non-empty-string the serialized representation of a slot, used as a unique identifier, can be used as a slot pattern that matches exactly one slot
+ * @psalm-type TSlotTuple = list<TDimensionValue> a tuple of dimension values in the order of dimension names, used as an alternative way to specify a slot
+ * @psalm-type TSlotPartial array<TDimensionName, TDimensionValue> a partial associative specification of concrete dimension values; dimensions may be omitted, but provided values are concrete; used as a slot pattern that can match multiple slots
+ * @psalm-type TSlotValues array<TDimensionName, TDimensionValue> a full associative specification of concrete dimension values; all dimensions must be present and all values must be concrete; used as a slot pattern that matches exactly one slot
+ * @psalm-type TDimensionValuePattern ?non-empty-string a null or string pattern to match dimension values. Used in slot patterns. String may contain wildcards as allowed by codec. Null is equivaldent to the match-all wildcard.
+ * @psalm-type TSlotTuplePattern list<TDimensionValuePattern> a tuple of dimension value patterns in the order of dimension names, used as an alternative way to specify a slot pattern.
+ * @psalm-type TSlotArrayPattern array<TDimensionName, TDimensionValuePattern> a pattern specified as an associative array of dimension name to dimension value pattern, where missing or null values are treated as wildcards that match any value for the dimension. Used as a slot pattern that can match multiple slots.
+ * @psalm-type TSlotPattern TSlotTuplePattern|TSlotArrayPattern|TSlotKey|null a slot pattern can be:
+ *  - a string slot pattern (e.g. "sup.*.foo|bar") that is deserialized using the codec
+ *  - an tuple: array value pattern in the exact order and number of dimensions defined in the slot space, where each value can be a specific value or a wildcard (null or wildcard string as defined by codec)
+ *  - an array of dimension name to value patterns where missing or null values are treated as wildcards
+ *  - null, to match the nil slot (for source/sink slots in edges)
+ * @psalm-type TEdgePattern array{from: TSlotPattern, to: TSlotPattern}|array{TSlotPattern, TSlotPattern} a pattern to define an edge between slots, consisting of a from pattern and a to pattern. Can be used in cascade step definitions.
+ */
 final class SlotSpace
 {
-    /** @var array<non-empty-string, list<non-empty-string>> */
+    /** @var array<TDimensionName, list<TDimensionValue>> */
     private array $dimensions = [];
 
-    /** @var list<non-empty-string> */
+    /** @var list<TDimensionName> */
     private array $dimensionNames = [];
 
-    /** @var array<non-empty-string, array<non-empty-string, list<non-empty-string>>> */
-    private array $dimensionExpansions = [];
+    public SlotCodec $codec;
 
-    public SlotKeyCodec $codec;
-
-    /** @var array<non-empty-string, SlotKey> */
+    /** @var array<TSlotKey, Slot> */
     private array $slotsByKey = [];
 
-    private SlotKey $nilSlot;
+    private Slot $nilSlot;
 
-    /**
-     * @var array<non-empty-string, MovementEdge[]>
-     */
-    public array $namedPaths = [];
+    /** @var array<non-empty-string, Cascade> */
+    public array $cascades = [];
 
     /**
      * Per slot key => the list of rules needed to generate the valid edges from that slot to other slots.
      *
-     * @var array<non-empty-string, EdgeRule[]>
+     * @var array<TSlotKey, EdgeRule[]>
      */
     private array $edgeRulesByOriginSlot = [];
 
     /**
-     * @var array<non-empty-string, array<non-empty-string, MovementEdge>>
+     * @var array<TSlotKey, array<TSlotKey, MovementEdge>>
      */
     private array $outgoingEdgeByOriginSlot = [];
 
     /**
      * @param array<non-empty-string, list<non-empty-string>> $dimensions
-     * @param ?class-string<SlotKeyCodec>                     $codecClass
+     * @param ?class-string<SlotCodec>                        $codecClass
+     *
+     * @psalm-param array<TDimensionName, list<TDimensionValue>> $dimensions
      */
     public static function define(
         array $dimensions,
@@ -54,7 +69,9 @@ final class SlotSpace
 
     /**
      * @param array<non-empty-string, list<non-empty-string>> $dimensions
-     * @param ?class-string<SlotKeyCodec>                     $codecClass
+     * @param ?class-string<SlotCodec>                        $codecClass
+     *
+     * @psalm-param array<TDimensionName, list<TDimensionValue>> $dimensions
      */
     public function __construct(
         array $dimensions,
@@ -70,13 +87,13 @@ final class SlotSpace
 
         // initialize nil slot
         $nilKey = $this->codec->nilKey();
-        $this->slotsByKey[$nilKey] = $this->nilSlot = new SlotKey($nilKey, null, $this);
+        $this->slotsByKey[$nilKey] = $this->nilSlot = new Slot($nilKey, null, $this);
 
         // build full cartesian product of dimensions to get all possible slots
         foreach ($this->cartesian($dimensions) as $values) {
             $key = $this->codec->serialize($values);
 
-            $this->slotsByKey[$key] = new SlotKey($key, $values, $this);
+            $this->slotsByKey[$key] = new Slot($key, $values, $this);
         }
     }
 
@@ -113,9 +130,15 @@ final class SlotSpace
 
         foreach ($rules as $rule) {
             $ruleSlots = SlotPattern::from($rule->pattern, $this)->expand();
-            $slots = $rule->allow
-                ? array_merge($slots, $ruleSlots)
-                : array_diff_key($slots, $ruleSlots);
+            if ($rule->allow) {
+                foreach ($ruleSlots as $slotKey => $slot) {
+                    $slots[$slotKey] = ($slots[$slotKey] ?? $slot)->meta($rule->attributes);
+                }
+
+                continue;
+            }
+
+            $slots = array_diff_key($slots, $ruleSlots);
         }
 
         $this->slotsByKey = $slots;
@@ -133,6 +156,8 @@ final class SlotSpace
      */
     public function applyEdgeRules(RuleSet | array $rules): self
     {
+        /** @psalm-suppress UnnecessaryVarAnnotation */
+        /** @var list<EdgeRule> $rules */
         $rules = (is_array($rules))
             ? (new RuleSet($rules))->all()
             : $rules->all();
@@ -156,8 +181,10 @@ final class SlotSpace
      * Cache edge list by slot key at $this->outgoingEdgeByOriginSlot.
      *
      * @return array<non-empty-string, MovementEdge>
+     *
+     * @psalm-return array<TSlotKey, MovementEdge>
      */
-    public function getEdgesFrom(SlotKey $from): array
+    public function getEdgesFrom(Slot $from): array
     {
         $fromKey = $from->key();
         $edges = $this->outgoingEdgeByOriginSlot[$fromKey] ?? [];
@@ -184,13 +211,21 @@ final class SlotSpace
 
     /**
      * @return list<non-empty-string>
+     *
+     * @psalm-return list<TDimensionName>
      */
     public function dimensionNames(): array
     {
         return $this->dimensionNames;
     }
 
-    /** @return array<non-empty-string, list<non-empty-string>> */
+    /**
+     * @return array<non-empty-string, list<non-empty-string>>
+     *
+     * @psalm-return array<TDimensionName, list<TDimensionValue>>
+     *
+     * @api
+     */
     public function dimensions(): array
     {
         return $this->dimensions;
@@ -201,7 +236,11 @@ final class SlotSpace
      *
      * @param non-empty-string $dimension
      *
+     * @psalm-param TDimensionName $dimension
+     *
      * @return list<non-empty-string>
+     *
+     * @psalm-return list<TDimensionValue>
      */
     public function dimensionValues(string $dimension): array
     {
@@ -210,11 +249,35 @@ final class SlotSpace
     }
 
     /**
+     * @param array $names list of dimension names that must all exist in the slot space
+     *
+     * @psalm-param array<string> $names
+     *
+     * @throws \InvalidArgumentException
+     */
+    public function validateKnownDimensionNames(array $names): void
+    {
+        if ($extra = array_diff($names, $this->dimensionNames)) {
+            if (1 === count($extra)) {
+                throw new \InvalidArgumentException('Unknown dimension: '.reset($extra));
+            }
+
+            throw new \InvalidArgumentException('Invalid slot values: unknown dimensions: ['.implode(', ', $extra).']');
+        }
+    }
+
+    /**
      * Expand a string or array of Slot pattern into a list of partials.
      *
      * @param string|array<non-empty-string, ?string>|null $pattern
      *
+     * @psalm-param TSlotPattern $pattern
+     *
      * @return list<array<non-empty-string, non-empty-string>|null>
+     *
+     * @psalm-return list<TSlotPartial>|list<null>
+     *
+     * @throws \InvalidArgumentException if the pattern is invalid or contains unknown dimensions or values
      */
     public function expandSlotPattern(string | array | null $pattern): array
     {
@@ -223,18 +286,25 @@ final class SlotSpace
             if (null === $pattern) {
                 return [null];
             }
+        } elseif (array_is_list($pattern)) {
+            if (count($pattern) !== count($this->dimensionNames)) {
+                throw new \InvalidArgumentException('Slot pattern tuple must have the same number of elements as dimensions: '.count($this->dimensionNames));
+            }
+            $pattern = array_combine($this->dimensionNames, $pattern);
+        } else {
+            /** @var array<non-empty-string, null|string> $pattern */
+            $this->validateKnownDimensionNames(array_keys($pattern));
         }
 
         foreach ($pattern as $dimension => $val) {
-            $values = $this->dimensions[$dimension] ?? null;
+            $values = $this->dimensions[$dimension];
             $pattern[$dimension] = [];
-            if (null === $values) {
-                throw new \InvalidArgumentException("Unknown dimension: $dimension");
-            }
+
             if ($this->codec->isWildcard($val)) {
                 // treat missing and wildcard values as the same: matching all values for the dimension
                 continue;
             }
+            /** @var non-empty-string $dimension */
             /** @var string $val */
             foreach (explode($this->codec->alternative(), $val) as $altVal) {
                 /** @var non-empty-string $altVal */
@@ -255,7 +325,7 @@ final class SlotSpace
         return $this->cartesian(array_filter($pattern));
     }
 
-    public function nilSlot(): SlotKey
+    public function nilSlot(): Slot
     {
         return $this->nilSlot;
     }
@@ -268,11 +338,13 @@ final class SlotSpace
      *
      * @see SlotPattern::from for more flexible pattern matching with support for wildcards and missing values.
      *
-     * @param list<string>|array<non-empty-string, string>|string $keyOrValues
+     * @param string|list<string>|array<string, string> $keyOrValues
      *
-     * @return SlotKey|null Returns the SlotKey if found, or null if no matching slot exists
+     * @psalm-param TSlotTuplePattern|TSlotArrayPattern|TSlotKey $keyOrValues
+     *
+     * @return ?Slot Returns the SlotKey if found, or null if no matching slot exists
      */
-    public function trySlot(array | string | null $keyOrValues): ?SlotKey
+    public function trySlot(array | string | null $keyOrValues, bool $throwOnInvalidDimensionValues = false): ?Slot
     {
         if (null === $keyOrValues || $this->codec->nilKey() === $keyOrValues) {
             return $this->nilSlot();
@@ -280,18 +352,37 @@ final class SlotSpace
         // If passed $keyOrValues is a list<non-empty-string>, treat the values as positional
         // and convert it to an associative array using dimension names as keys
         if (is_array($keyOrValues)) {
-            $count = count($keyOrValues);
-            if (count($this->dimensions) === $count
-                && array_keys($keyOrValues) === range(0, $count - 1)) {
+            if (array_is_list($keyOrValues)) {
                 $keyOrValues = array_combine($this->dimensionNames, $keyOrValues);
+            } else {
+                // if it's already an associative array, validate keys are exactly equal to dimension names
+                $keys = array_keys($keyOrValues);
+                $missing = array_diff($this->dimensionNames, $keys);
+                $extra = array_diff($keys, $this->dimensionNames);
+                if ($missing || $extra) {
+                    // include the missing and extra keys in the error message for easier debugging
+                    $gotMissing = $missing ? 'missing dimensions: ['.implode(', ', $missing).']' : '';
+                    $gotExtra = $extra ? 'unknown dimensions: ['.implode(', ', $extra).']' : '';
+                    throw new \InvalidArgumentException('Invalid slot values: got '.
+                        implode(', ', $this->dimensionNames).implode(', ', array_filter([$gotMissing, $gotExtra])));
+                }
             }
-            /** @var array<non-empty-string, string> $keyOrValues */
+
+            /** @var array<non-empty-string, null|''|TDimensionValue> $keyOrValues */
             $key = $this->codec->serialize($keyOrValues);
         } else {
             $key = $keyOrValues;
         }
 
-        return $this->slotsByKey[$key] ?? null;
+        $slot = $this->slotsByKey[$key] ?? null;
+        if (null === $slot && $throwOnInvalidDimensionValues) {
+            // try to deserialize the key to get more specific error messages about invalid dimension values
+            /** @psalm-var TSlotArrayPattern $keyOrValues */
+            $keyOrValues = is_array($keyOrValues) ? $keyOrValues : $this->codec->deserialize($key);
+            $this->codec->validateDimensionValues($keyOrValues, false);
+        }
+
+        return $slot;
     }
 
     /**
@@ -302,13 +393,15 @@ final class SlotSpace
      *
      * @see SlotPattern::from for more flexible pattern matching with support for wildcards and missing values.
      *
-     * @param list<string>|array<non-empty-string, string>|string $keyOrValues
+     * @param string|list<string>|array<string, string> $keyOrValues
+     *
+     * @psalm-param TSlotKey|TSlotTuple|TSlotValues $keyOrValues
      *
      * @throws \InvalidArgumentException if the resulting key does not correspond to any defined slot
      */
-    public function slot(array | string | null $keyOrValues): SlotKey
+    public function slot(array | string | null $keyOrValues): Slot
     {
-        $slot = $this->trySlot($keyOrValues);
+        $slot = $this->trySlot($keyOrValues, true);
 
         if (null === $slot) {
             /** @psalm-suppress RiskyTruthyFalsyComparison */
@@ -326,7 +419,9 @@ final class SlotSpace
      *
      * @param array<non-empty-string, ?string> $partial
      *
-     * @return list<SlotKey>
+     * @psalm-param array<TDimensionName, TDimensionValuePattern> $partial
+     *
+     * @return list<Slot>
      */
     public function matchPartial(?array $partial): array
     {
@@ -363,14 +458,17 @@ final class SlotSpace
      * Both wildcard and missing values are supported, with the same semantics.
      *
      * @param non-empty-string|array<non-empty-string, ?string>|null $fromPattern Specified values match with equality, wildcard/missing match with anything
-     * @param non-empty-string|array<non-empty-string, ?string>|null $toPartials  Specified values are kept, wildcard/missing are filled in from the $fromPattern match
+     * @param non-empty-string|array<non-empty-string, ?string>|null $toPattern   Specified values are kept, wildcard/missing are filled in from the $fromPattern match
+     *
+     * @psalm-param TSlotPattern $fromPattern Specified values match with equality, wildcard/missing match with anything
+     * @psalm-param TSlotPattern $toPattern  Specified values are kept, wildcard/missing are filled in from the $fromPattern match
      *
      * @return MovementEdge[]
      */
-    public function edgesBetween(array | string | null $fromPattern, array | string | null $toPartials): array
+    public function edgesBetween(array | string | null $fromPattern, array | string | null $toPattern): array
     {
         $edges = [];
-        $toPartials = $this->expandSlotPattern($toPartials);
+        $toPartials = $this->expandSlotPattern($toPattern);
         foreach (SlotPattern::from($fromPattern, $this)->expand() as $fromSlot) {
             foreach ($toPartials as $toPartial) {
                 foreach ($fromSlot->with($toPartial) as $toSlot) {
@@ -385,27 +483,81 @@ final class SlotSpace
     }
 
     /**
-     * Generate a full path from a list of (from, to) pattern tuples.
-     * Wildcard are supported when both from and to patterns are specified.
+     * Return all currently valid edges generated from rules matching any of the given labels.
      *
-     * @psalm-type NodePattern = array<non-empty-string, string>|non-empty-string
+     * @param list<non-empty-string> $labels
      *
-     * @param list<array{?NodePattern, ?NodePattern}|null> $fromToPatterns
+     * @return list<MovementEdge>
      */
-    public function cascade(array $fromToPatterns, bool $reverse): MovementPath
+    public function edgesByLabels(array $labels): array
     {
+        $labelSet = array_fill_keys($labels, true);
         $edges = [];
-        foreach (array_filter($fromToPatterns) as [$from, $to]) {
-            $newEdges = $this->edgesBetween($from, $to);
-            $edges = [...$edges, ...$newEdges];
+
+        foreach ($this->slotsByKey as $slot) {
+            foreach ($this->getEdgesFrom($slot) as $edge) {
+                if (null === $edge->label || !isset($labelSet[$edge->label])) {
+                    continue;
+                }
+
+                $edges[] = $edge;
+            }
         }
 
-        $path = new MovementPath(...$edges);
-        if ($reverse) {
-            $path = $path->reverse(flipEdges: true);
+        return $edges;
+    }
+
+    /**
+     * Register a named cascade definition.
+     *
+     * @param non-empty-string $name
+     * @param \Closure(Cascade):mixed|list<array{
+     *     0?: array<int|string, string|null>|string|null,
+     *     1?: array<int|string, string|null>|string|null,
+     *     from?: array<int|string, string|null>|string|null,
+     *     to?: array<int|string, string|null>|string|null
+     * }> $builder
+     *
+     * @psalm-param \Closure(Cascade):mixed|list<TEdgePattern> $builder
+     */
+    public function cascade(string $name, \Closure | array $builder): self
+    {
+        if (isset($this->cascades[$name])) {
+            throw new \InvalidArgumentException("Cascade '$name' already defined");
         }
 
-        return $path;
+        if (is_array($builder)) {
+            $this->cascades[$name] = Cascade::define(
+                $name,
+                static function (Cascade $cascade) use ($builder): void {
+                    foreach ($builder as $edgePattern) {
+                        /** @psalm-suppress DocblockTypeContradiction */
+                        if (array_is_list($edgePattern)) {
+                            /** @var array{TSlotPattern, TSlotPattern} $edgePattern */
+                            $cascade->move($edgePattern[0], $edgePattern[1]);
+                        } else {
+                            /** @var array{from:TSlotPattern, to:TSlotPattern} $edgePattern */
+                            $cascade->move($edgePattern['from'], $edgePattern['to']);
+                        }
+                    }
+                },
+            );
+
+            return $this;
+        }
+
+        $this->cascades[$name] = Cascade::define($name, $builder);
+
+        return $this;
+    }
+
+    public function getCascade(string $name): Cascade
+    {
+        if (!isset($this->cascades[$name])) {
+            throw new \InvalidArgumentException("Cascade '$name' not defined");
+        }
+
+        return $this->cascades[$name];
     }
 
     /**
@@ -435,6 +587,7 @@ final class SlotSpace
             $result = $append;
         }
 
+        /** @psalm-var list<array<non-empty-string, non-empty-string>> $result */
         return $result;
     }
 }
