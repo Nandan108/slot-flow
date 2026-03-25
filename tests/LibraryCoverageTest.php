@@ -179,11 +179,15 @@ final class LibraryCoverageTest extends TestCase
         self::assertSame(4, $inventory->get(['foo', 'fs']));
         self::assertSame(2, $inventory->get($space->slot('foo.sd')));
         self::assertSame(0, $inventory->get(null));
-        self::assertSame(6, $inventory->getSum('foo.fs', 'foo.sd'));
+        self::assertSame(6, $inventory->getSum($space->slot('foo.fs'), 'foo.sd'));
         self::assertSame(6, $inventory->getSum(['foo', null]));
         self::assertSame(6, $inventory->getSum('foo.*'));
         self::assertSame(6, $inventory->getSum('foo.fs|sd'));
         self::assertSame(6, $inventory->getSum('foo.*', 'foo.fs'));
+        $inventory->setTuple([['foo.fs', 7]]);
+        self::assertSame(7, $inventory->get('foo.fs'));
+        $inventory->setTuple([[['loc' => 'foo', 'stt' => 'fs'], 8]]);
+        self::assertSame(8, $inventory->get('foo.fs'));
 
         $batch = InventoryBatch::fromRows(
             space: $space,
@@ -201,6 +205,27 @@ final class LibraryCoverageTest extends TestCase
 
         self::assertSame('A', $batch->items()[0]->subject);
         self::assertSame(2, $batch->items()[0]->inventory->get($space->slot('foo.fs')));
+
+        try {
+            $inventory->setTuple([[['loc' => 'foo'], 1]]);
+            self::fail('Expected ambiguous inventory tuple pattern rejection');
+        } catch (SlotFlowInvalidArgumentException $e) {
+            self::assertSame('Inventory tuple slot pattern must resolve to exactly one slot.', $e->getMessage());
+            self::assertSame(['foo.fs', 'foo.sd'], $e->debugContext()['matched_slots']);
+        }
+
+        $prunedSpace = SlotSpace::define([
+            'loc' => ['foo'],
+            'stt' => ['fs', 'sd'],
+        ])->slotRules([SlotRule::allow('foo.fs')]);
+
+        try {
+            (new Inventory($prunedSpace))->setTuple([['foo.sd', 1]]);
+            self::fail('Expected unknown inventory tuple slot rejection');
+        } catch (SlotFlowInvalidArgumentException $e) {
+            self::assertSame('Unknown slot: "foo.sd"', $e->getMessage());
+            self::assertSame(['slot' => 'foo.sd'], $e->debugContext());
+        }
 
         $result = new MovementResult([], 1);
         $item = new BatchItem('A', 1, new Inventory($space));
@@ -621,16 +646,16 @@ final class LibraryCoverageTest extends TestCase
 
         $availableInventory = new AvailableInventorySortPolicy();
         $inventorySorted = $availableInventory->orderEdges(new CascadeContext($space, $edges, new Inventory($space, [
-            [$space->slot('a.CS.fs'), 1],
-            [$space->slot('a.FP.fs'), 8],
-            [$space->slot('b.CS.fs'), 3],
+            ['a.CS.fs', 1],
+            ['a.FP.fs', 8],
+            ['b.CS.fs', 3],
         ]), 1));
         self::assertSame(['a.FP.fs', 'b.CS.fs', 'a.CS.fs'], array_map(static fn (MovementEdge $edge): string => $edge->from->key, $inventorySorted));
         $nilPreferred = $availableInventory->orderEdges(new CascadeContext($space, [
             new MovementEdge($space->slot('a.CS.fs'), $space->slot('dest.CS.sd')),
             new MovementEdge($space->nilSlot(), $space->slot('dest.CS.sd')),
         ], new Inventory($space, [
-            [$space->slot('a.CS.fs'), 99],
+            ['a.CS.fs', 99],
         ]), 1));
         self::assertFalse($nilPreferred[0]->from->isNil());
         self::assertTrue($nilPreferred[1]->from->isNil());
@@ -658,8 +683,8 @@ final class LibraryCoverageTest extends TestCase
             'stt'   => ['fs', 'sd'],
         ]);
         $inventory = new Inventory($space, [
-            [$space->slot('a.fs'), 4],
-            [$space->slot('b.fs'), 4],
+            ['a.fs', 4],
+            ['b.fs', 4],
         ]);
 
         $cascade = Cascade::define('policy-branches', static fn (Cascade $cascade) => $cascade
@@ -719,9 +744,9 @@ final class LibraryCoverageTest extends TestCase
             'state' => ['fs', 'sd'],
         ]);
         $inventory = new Inventory($space, [
-            [$space->slot('a.fs'), 1],
-            [$space->slot('b.fs'), 2],
-            [$space->slot('c.fs'), 0],
+            ['a.fs', 1],
+            ['b.fs', 2],
+            ['c.fs', 0],
         ]);
 
         $cascade = Cascade::define('decisions', static fn (Cascade $cascade) => $cascade
@@ -758,8 +783,8 @@ final class LibraryCoverageTest extends TestCase
             'state' => ['fs', 'sd'],
         ]);
         $inventory = new Inventory($space, [
-            [$space->slot('a.fs'), 3],
-            [$space->slot('b.fs'), 3],
+            ['a.fs', 3],
+            ['b.fs', 3],
         ]);
 
         $cascade = Cascade::define('subject-filter', static fn (Cascade $cascade) => $cascade
@@ -796,8 +821,8 @@ final class LibraryCoverageTest extends TestCase
             'stt' => ['fs', 'sd'],
         ]);
         $inventory = new Inventory($space, [
-            [$space->slot('a.fs'), 2],
-            [$space->slot('b.fs'), 3],
+            ['a.fs', 2],
+            ['b.fs', 3],
         ]);
 
         $cascade = Cascade::define('param-array-pattern', static fn (Cascade $cascade) => $cascade
@@ -823,7 +848,7 @@ final class LibraryCoverageTest extends TestCase
             'stt'   => ['fs', 'sd'],
             'empty' => [],
         ]);
-        $inventory = new Inventory($space, [[$space->slot(['foo', 'fs', '*']), 1]]);
+        $inventory = new Inventory($space, [[['foo', 'fs', '*'], 1]]);
         $cascade = Cascade::define('noop', static fn (Cascade $cascade) => $cascade
             ->move('foo.fs.*', 'bar.sd.*')
             ->move('bar.sd.*', null));

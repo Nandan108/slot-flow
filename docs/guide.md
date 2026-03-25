@@ -119,8 +119,8 @@ API reference: [Inventory API](api-reference.md#inventory-api)
 use Nandan108\SlotFlow\Inventory;
 
 $inventory = new Inventory($space, [
-    [$space->slot(['loc' => 'wh1', 'own' => 'FP', 'stt' => 'fs']), 5],
-    [$space->slot(['loc' => 'sup', 'own' => 'CS', 'stt' => 'sd']), 2],
+    ['wh1.FP.fs', 5],
+    ['sup.CS.sd', 2],
 ]);
 ```
 
@@ -294,8 +294,10 @@ When using parameterized cascades, `params` is also where placeholder substituti
 
 This same `params` mechanism works when `cascade` is a registered cascade name, which makes named parameterized cascades a good fit for application-level flow templates.
 
-**Exceptions**
+### Exceptions
+
 SlotFlow treats invalid patterns, definitions, and lookups as modeling/API errors. All library-thrown exceptions implement `Nandan108\SlotFlow\Exceptions\SlotFlowExceptionInterface`, so callers can catch that interface for library-wide handling or the SPL-compatible `SlotFlowInvalidArgumentException` and `SlotFlowLogicException` subclasses for narrower handling. When available, `debugContext(): array` provides structured diagnostics about the failing input or state.
+
 
 ## 6. Batch Execution
 
@@ -312,7 +314,7 @@ $batch = InventoryBatch::fromRows(
     rows: $rows,
     subjectGetter: fn (array $row): string => $row['sku'],
     slotRowGetter: fn (array $row): array => [
-        [$space->slot(['loc' => $row['loc'], 'own' => $row['own'], 'stt' => 'fs']), $row['fs']],
+        [['loc' => $row['loc'], 'own' => $row['own'], 'stt' => 'fs'], $row['fs']],
     ],
     quantityGetter: fn (array $rows): int => $rows[0]['requested_qty'],
     subjectIdGetter: fn (string $subject): string => $subject,
@@ -431,7 +433,7 @@ and also:
 - `slotAttributes(Slot $slot)`
 - `slotAttribute(Slot $slot, string $name, mixed $default = null)`
 
-This is the intended hook for dynamic, inventory-instance metadata such as `ifs`.
+This is the intended hook for dynamic, inventory-instance metadata (e.g. subject dependent capacity).
 
 Those values should not be modeled as canonical slot metadata when they vary by inventory item or ingestion batch.
 

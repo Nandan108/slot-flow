@@ -75,7 +75,7 @@ final class MovementEngineTest extends TestCase
             'stt'   => ['fs', 'sd'],
         ]);
 
-        $inventory = new Inventory($space, [[$space->slot('foo.fs'), 2]]);
+        $inventory = new Inventory($space, [['foo.fs', 2]]);
         $cascade = Cascade::define('sell', static fn (Cascade $cascade) => $cascade
             ->move('foo.fs', 'foo.sd'));
 
@@ -95,8 +95,8 @@ final class MovementEngineTest extends TestCase
         ]);
 
         $inventory = new Inventory($space, [
-            [$space->slot('a.fs'), 4],
-            [$space->slot('b.fs'), 4],
+            ['a.fs', 4],
+            ['b.fs', 4],
         ]);
 
         $cascade = Cascade::define('allocate', static fn (Cascade $cascade) => $cascade
@@ -145,7 +145,7 @@ final class MovementEngineTest extends TestCase
             \Nandan108\SlotFlow\Rules\EdgeRule::allowLabeled('sell', 'foo.fs', 'dest.sd'),
         ]);
 
-        $inventory = new Inventory($space, [[$space->slot('foo.fs'), 2]]);
+        $inventory = new Inventory($space, [['foo.fs', 2]]);
         $cascade = Cascade::define('sell', static fn (Cascade $c) => $c->stepByLabeledEdges('sell'));
 
         $result = (new MovementEngine())->execute($inventory, $space, $cascade, 2);
@@ -164,7 +164,7 @@ final class MovementEngineTest extends TestCase
         ]);
 
         $inventory = new Inventory($space, [
-            [$space->slot('sup.C.sd'), 2],
+            ['sup.C.sd', 2],
         ]);
         $cascade = Cascade::define('receive', static fn (Cascade $cascade) => $cascade
             ->move('sup.{own}.{state}', '{loc}.{own}.{state}')

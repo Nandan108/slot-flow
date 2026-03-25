@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Nandan108\SlotFlow;
 
+use Nandan108\SlotFlow\Exceptions\SlotFlowInvalidArgumentException;
+
 /**
  * An instance of this class represents the inventory state of a single SKU,
  * as a mapping of slot keys to corresponding quantities.
@@ -12,7 +14,7 @@ namespace Nandan108\SlotFlow;
  * @psalm-import-type TSlotValues from SlotSpace
  *
  * @psalm-type TQtty = int|float
- * @psalm-type TInventoryTuple = array{0: Slot|TSlotValues, 1: TQtty, 2?: array<string, mixed>}
+ * @psalm-type TInventoryTuple = array{0: Slot|TSlotPattern, 1: TQtty, 2?: array<string, mixed>}
  *
  * @api
  */
@@ -98,7 +100,7 @@ final class Inventory
     {
         foreach ($slots as $tuple) {
             [$slot, $quantity, $attributes] = $tuple + [null, null, null];
-            $resolvedSlot = $slot instanceof Slot ? $slot : $this->space->slot($slot);
+            $resolvedSlot = $this->resolveSingleSlot($slot);
             $key = $resolvedSlot->key;
             $this->quantities[$key] = $quantity;
             $this->rememberSlotAttributes($resolvedSlot, $attributes);
@@ -175,7 +177,7 @@ final class Inventory
         foreach ($rows as $row) {
             foreach ($resolver($row, $this->space) as $tuple) {
                 [$slot, $quantity, $attributes] = $tuple + [null, null, null];
-                $slot = ($slot instanceof Slot ? $slot : $this->space->slot($slot));
+                $slot = $this->resolveSingleSlot($slot);
                 $this->rememberSlotAttributes($slot, $attributes);
                 $this->add($slot, $quantity);
             }
@@ -213,5 +215,28 @@ final class Inventory
 
         $key = $slot->key;
         $this->slotAttributes[$key] = ($this->slotAttributes[$key] ?? []) + $merged;
+    }
+
+    /**
+     * Resolve a tuple slot input to exactly one slot.
+     *
+     * @psalm-param Slot|TSlotPattern $slot
+     */
+    private function resolveSingleSlot(Slot | array | string | null $slot): Slot
+    {
+        if ($slot instanceof Slot) {
+            return $slot;
+        }
+
+        $matches = $this->space->matchPattern($slot);
+
+        return match (count($matches)) {
+            0       => $this->space->slot($slot), // delegate throw to SlotSpace::slot()
+            1       => $matches[0],
+            default => throw new SlotFlowInvalidArgumentException(
+                'Inventory tuple slot pattern must resolve to exactly one slot.',
+                ['slot_pattern' => $slot, 'matched_slots' => array_map(static fn (Slot $match): string => $match->key, $matches)],
+            ),
+        };
     }
 }

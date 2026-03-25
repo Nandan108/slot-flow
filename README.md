@@ -76,8 +76,8 @@ $space = SlotSpace::define([
 ])));
 
 $inventory = new Inventory($space, [
-    [$space->slot(['wh1', 'fs']), 5],
-    [$space->slot(['sup', 'fs']), 10],
+    ['wh1.fs', 5],
+    ['sup.fs', 10],
 ]);
 
 $result = (new MovementEngine())->execute(
