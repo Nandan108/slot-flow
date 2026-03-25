@@ -2,9 +2,10 @@
 
 declare(strict_types=1);
 
-namespace Nandan108\SlotFlow;
+namespace Nandan108\SlotFlow\Codecs;
 
 use Nandan108\SlotFlow\Contracts\SlotCodec;
+use Nandan108\SlotFlow\SlotSpace;
 use TSlotArrayPattern;
 
 /**

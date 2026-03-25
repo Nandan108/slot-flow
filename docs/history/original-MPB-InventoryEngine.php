@@ -164,7 +164,7 @@ class ProductOptStock extends \MPB\Base\DbTable\Record
                             'opt_key'     => $opt->opt_key,
                             'sizetype_id' => $opt->product->sizetype_id,
                             'loc_id'      => $stockLine->loc_id,
-                            'state'       => $stateCode,
+                            'stt'         => $stateCode,
                             'qtty'        => $diff,
                             'balance'     => $changed[$dbField][1],
                         ]);

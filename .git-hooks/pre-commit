@@ -1,0 +1,28 @@
+#!/bin/sh
+
+run_local_pre_commit() {
+    # Optional local extension hook (not stored in repo)
+    if [ -x .git/hooks/pre-commit.local ]; then
+        echo "Running local pre-commit extension..."
+        .git/hooks/pre-commit.local
+    fi
+}
+
+FILES=$(git diff --cached --name-only --diff-filter=ACMR | grep --color=never -E '\.php$')
+
+if [ -z "$FILES" ]; then
+    run_local_pre_commit
+    exit 0
+fi
+
+vendor/bin/php-cs-fixer fix --dry-run \
+    --diff --allow-risky=yes --using-cache=no \
+    --path-mode=intersection --config=.php-cs-fixer.php $FILES
+
+if [ $? -ne 0 ]; then
+    echo "✘ PHP-CS-Fixer found issues in staged files. Please fix them before committing, or run:"
+    echo "composer cs-fix"
+    exit 1;
+fi
+
+run_local_pre_commit

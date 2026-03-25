@@ -2,10 +2,15 @@
 
 declare(strict_types=1);
 
-namespace Nandan108\SlotFlow;
+namespace Nandan108\SlotFlow\Batch;
+
+use Nandan108\SlotFlow\Inventory;
+use Nandan108\SlotFlow\MovementResult;
 
 /**
  * @template T
+ *
+ * @internal
  */
 final class BatchItem
 {

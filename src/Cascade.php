@@ -4,8 +4,13 @@ declare(strict_types=1);
 
 namespace Nandan108\SlotFlow;
 
+use Nandan108\SlotFlow\Internal\CascadeStep;
+use Nandan108\SlotFlow\Internal\CascadeStepBuilder;
+
 /**
  * @psalm-import-type TSlotPattern from SlotSpace
+ *
+ * @api
  */
 final class Cascade
 {

@@ -4,8 +4,14 @@ declare(strict_types=1);
 
 namespace Nandan108\SlotFlow;
 
+use Nandan108\SlotFlow\Results\InventoryMutation;
+use Nandan108\SlotFlow\Results\LedgerEntry;
+use Nandan108\SlotFlow\Results\MovementEvent;
+
 /**
  * @template-covariant TQtty of int|float
+ *
+ * @api
  */
 final class MovementResult
 {

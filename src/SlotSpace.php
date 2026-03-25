@@ -4,7 +4,12 @@ declare(strict_types=1);
 
 namespace Nandan108\SlotFlow;
 
+use Nandan108\SlotFlow\Codecs\DefaultSlotKeyCodec;
 use Nandan108\SlotFlow\Contracts\SlotCodec;
+use Nandan108\SlotFlow\Internal\SlotPattern;
+use Nandan108\SlotFlow\Rules\EdgeRule;
+use Nandan108\SlotFlow\Rules\RuleSet;
+use Nandan108\SlotFlow\Rules\SlotRule;
 use TSlotArrayPattern;
 
 /**
@@ -16,13 +21,15 @@ use TSlotArrayPattern;
  * @psalm-type TSlotValues array<TDimensionName, TDimensionValue> a full associative specification of concrete dimension values; all dimensions must be present and all values must be concrete; used as a slot pattern that matches exactly one slot
  * @psalm-type TDimensionValuePattern ?non-empty-string a null or string pattern to match dimension values. Used in slot patterns. String may contain wildcards as allowed by codec. Null is equivaldent to the match-all wildcard.
  * @psalm-type TSlotTuplePattern list<TDimensionValuePattern> a tuple of dimension value patterns in the order of dimension names, used as an alternative way to specify a slot pattern.
- * @psalm-type \TSlotArrayPattern array<TDimensionName, TDimensionValuePattern> a pattern specified as an associative array of dimension name to dimension value pattern, where missing or null values are treated as wildcards that match any value for the dimension. Used as a slot pattern that can match multiple slots.
+ * @psalm-type TSlotArrayPattern array<TDimensionName, TDimensionValuePattern> a pattern specified as an associative array of dimension name to dimension value pattern, where missing or null values are treated as wildcards that match any value for the dimension. Used as a slot pattern that can match multiple slots.
  * @psalm-type TSlotPattern TSlotTuplePattern|TSlotArrayPattern|TSlotKey|null a slot pattern can be:
  *  - a string slot pattern (e.g. "sup.*.foo|bar") that is deserialized using the codec
  *  - an tuple: array value pattern in the exact order and number of dimensions defined in the slot space, where each value can be a specific value or a wildcard (null or wildcard string as defined by codec)
  *  - an array of dimension name to value patterns where missing or null values are treated as wildcards
  *  - null, to match the nil slot (for source/sink slots in edges)
  * @psalm-type TEdgePattern array{from: TSlotPattern, to: TSlotPattern}|array{TSlotPattern, TSlotPattern} a pattern to define an edge between slots, consisting of a from pattern and a to pattern. Can be used in cascade step definitions.
+ *
+ * @api
  */
 final class SlotSpace
 {
@@ -115,7 +122,7 @@ final class SlotSpace
      *                                                                  Exclusion patterns start with '-', inclusion patterns start with '+' or have no prefix. Patterns are applied in order, so later patterns override earlier ones.
      *                                                                  If the first pattern starts with '-', it is treated as an exclusion pattern and all slots are included by default. If the first pattern starts with '+', it is treated as an inclusion pattern and no slots are included by default.
      */
-    public function applySlotRules(RuleSet | array $rules): self
+    public function slotRules(RuleSet | array $rules): self
     {
         // flatten potentially nested RuleSet into a single list of SlotRule
         $rules = (is_array($rules))
@@ -154,7 +161,7 @@ final class SlotSpace
      *
      * @param RuleSet<EdgeRule>|list<EdgeRule|RuleSet<EdgeRule>> $rules
      */
-    public function applyEdgeRules(RuleSet | array $rules): self
+    public function edgeRules(RuleSet | array $rules): self
     {
         /** @psalm-suppress UnnecessaryVarAnnotation */
         /** @var list<EdgeRule> $rules */
@@ -338,9 +345,9 @@ final class SlotSpace
      *
      * @see SlotPattern::from for more flexible pattern matching with support for wildcards and missing values.
      *
-     * @param string|list<string>|array<string, string> $keyOrValues
+     * @param string|array<string>|null $keyOrValues
      *
-     * @psalm-param TSlotTuplePattern|TSlotArrayPattern|TSlotKey $keyOrValues
+     * @psalm-param TSlotPattern $keyOrValues
      *
      * @return ?Slot Returns the SlotKey if found, or null if no matching slot exists
      */
@@ -393,9 +400,9 @@ final class SlotSpace
      *
      * @see SlotPattern::from for more flexible pattern matching with support for wildcards and missing values.
      *
-     * @param string|list<string>|array<string, string> $keyOrValues
+     * @param string|array<string>|null $keyOrValues
      *
-     * @psalm-param TSlotKey|TSlotTuple|TSlotValues $keyOrValues
+     * @psalm-param TSlotPattern $keyOrValues
      *
      * @throws \InvalidArgumentException if the resulting key does not correspond to any defined slot
      */

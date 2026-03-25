@@ -2,10 +2,14 @@
 
 declare(strict_types=1);
 
-namespace Nandan108\SlotFlow;
+namespace Nandan108\SlotFlow\Rules;
+
+use Nandan108\SlotFlow\SlotSpace;
 
 /**
  * @psalm-import-type TSlotPattern from SlotSpace
+ *
+ * @api
  */
 final class SlotRule
 {
@@ -28,8 +32,8 @@ final class SlotRule
      * Create an allow rule for the given pattern.
      * The pattern can be a string or an array of dimension-value pairs.
      *
-     * @param array<int|string, ?non-empty-string>|non-empty-string $pattern
-     * @param array<string, mixed>                                  $meta
+     * @param array<non-empty-string, ?non-empty-string>|non-empty-string $pattern
+     * @param array<string, mixed>                                        $meta
      *
      * @psalm-param TSlotPattern $pattern
      */
@@ -42,13 +46,22 @@ final class SlotRule
      * Create a deny rule for the given pattern.
      * The pattern can be a string or an array of dimension-value pairs.
      *
-     * @param array<int|string, ?non-empty-string>|non-empty-string $pattern
+     * @param array<non-empty-string, ?non-empty-string>|non-empty-string $pattern
+     * @param array<non-empty-string, ?non-empty-string>|non-empty-string ...$patterns
      *
      * @psalm-param TSlotPattern $pattern
+     * @psalm-param list<TSlotPattern> $patterns
+     *
+     * @psalm-return self|RuleSet<self>
      */
-    public static function deny(string | array | null $pattern): self
+    public static function deny($pattern, string | array | null ...$patterns): self | RuleSet
     {
-        return new self(false, $pattern);
+        return 0 === count($patterns)
+            ? new self(false, $pattern)
+            : new RuleSet(array_map(
+                fn (string | array | null $p) => new self(false, $p),
+                [$pattern, ...$patterns],
+            ));
     }
 
     /**

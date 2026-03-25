@@ -5,15 +5,15 @@ declare(strict_types=1);
 namespace Tests;
 
 use Nandan108\SlotFlow\Cascade;
-use Nandan108\SlotFlow\CascadeContext;
-use Nandan108\SlotFlow\DefaultSlotKeyCodec;
-use Nandan108\SlotFlow\EdgeRule;
+use Nandan108\SlotFlow\Codecs\DefaultSlotKeyCodec;
+use Nandan108\SlotFlow\Internal\SlotPattern;
+use Nandan108\SlotFlow\Internal\SlotSpaceBuilder;
 use Nandan108\SlotFlow\MovementEdge;
-use Nandan108\SlotFlow\RuleSet;
-use Nandan108\SlotFlow\SlotPattern;
-use Nandan108\SlotFlow\SlotRule;
+use Nandan108\SlotFlow\Rules\EdgeRule;
+use Nandan108\SlotFlow\Rules\RuleSet;
+use Nandan108\SlotFlow\Rules\SlotRule;
+use Nandan108\SlotFlow\Runtime\CascadeContext;
 use Nandan108\SlotFlow\SlotSpace;
-use Nandan108\SlotFlow\SlotSpaceBuilder;
 use PHPUnit\Framework\TestCase;
 
 final class SlotSpaceTest extends TestCase
@@ -22,7 +22,7 @@ final class SlotSpaceTest extends TestCase
     {
         $space = $this->makeWarehouseSpace();
 
-        self::assertSame(['loc', 'state'], $space->dimensionNames());
+        self::assertSame(['loc', 'stt'], $space->dimensionNames());
         self::assertSame(['foo', 'faz', 'bar'], $space->dimensionValues('loc'));
         self::assertSame('foo.fs', $space->slot('foo.fs')->key);
         self::assertSame('faz.sd', $space->slot(['faz', 'sd'])->key);
@@ -36,7 +36,7 @@ final class SlotSpaceTest extends TestCase
 
         SlotSpace::define([
             'loc'   => ['foo.bad'],
-            'state' => ['fs'],
+            'stt'   => ['fs'],
         ], DefaultSlotKeyCodec::class);
     }
 
@@ -50,7 +50,7 @@ final class SlotSpaceTest extends TestCase
         );
 
         self::assertSame(
-            [['loc' => 'foo', 'state' => 'fs']],
+            [['loc' => 'foo', 'stt' => 'fs']],
             $space->expandSlotPattern('foo.fs'),
         );
 
@@ -61,38 +61,38 @@ final class SlotSpaceTest extends TestCase
 
         self::assertSame(
             [
-                ['loc' => 'foo', 'state' => 'fs'],
-                ['loc' => 'faz', 'state' => 'fs'],
+                ['loc' => 'foo', 'stt' => 'fs'],
+                ['loc' => 'faz', 'stt' => 'fs'],
             ],
             $space->expandSlotPattern('foo|faz.fs'),
         );
 
         self::assertSame(
             [
-                ['loc' => 'foo', 'state' => 'fs'],
-                ['loc' => 'faz', 'state' => 'fs'],
+                ['loc' => 'foo', 'stt' => 'fs'],
+                ['loc' => 'faz', 'stt' => 'fs'],
             ],
             $space->expandSlotPattern('f*.fs'),
         );
 
         self::assertSame(
             [
-                ['loc' => 'faz', 'state' => 'fs'],
-                ['loc' => 'bar', 'state' => 'fs'],
+                ['loc' => 'faz', 'stt' => 'fs'],
+                ['loc' => 'bar', 'stt' => 'fs'],
             ],
             $space->expandSlotPattern('*a*.fs'),
         );
 
         self::assertSame(
             [
-                ['loc' => 'faz', 'state' => 'fs'],
-                ['loc' => 'foo', 'state' => 'fs'],
+                ['loc' => 'faz', 'stt' => 'fs'],
+                ['loc' => 'foo', 'stt' => 'fs'],
             ],
             $space->expandSlotPattern('*z|*o.fs'),
         );
 
         self::assertSame(
-            [['state' => 'fs']],
+            [['stt' => 'fs']],
             $space->expandSlotPattern('foo|faz|bar.fs'),
         );
 
@@ -118,9 +118,9 @@ final class SlotSpaceTest extends TestCase
         );
     }
 
-    public function testApplySlotRulesSupportsNestedRuleSetsAndSequencing(): void
+    public function testslotRulesSupportsNestedRuleSetsAndSequencing(): void
     {
-        $space = $this->makeWarehouseSpace()->applySlotRules(
+        $space = $this->makeWarehouseSpace()->slotRules(
             RuleSet::from(
                 SlotRule::allow('foo.*'),
                 RuleSet::from(
@@ -140,12 +140,12 @@ final class SlotSpaceTest extends TestCase
         $space->slot('foo.sd');
     }
 
-    public function testApplySlotRulesAccumulatesMetadataFromMatchingAllowRules(): void
+    public function testslotRulesAccumulatesMetadataFromMatchingAllowRules(): void
     {
         $space = SlotSpace::define([
             'loc'   => ['foo', 'bar'],
-            'state' => ['fs', 'sd'],
-        ])->applySlotRules([
+            'stt'   => ['fs', 'sd'],
+        ])->slotRules([
             SlotRule::allow('foo.*', ['zone' => 'forward']),
             SlotRule::allow('*.fs', ['temperature' => 'ambient']),
             SlotRule::allow('foo.fs', ['zone' => 'reserve', 'channel' => 'web']),
@@ -169,12 +169,12 @@ final class SlotSpaceTest extends TestCase
     {
         $space = SlotSpace::define([
             'loc'   => ['foo', 'b'],
-            'state' => ['fs', 'sd'],
+            'stt'   => ['fs', 'sd'],
         ]);
 
         self::assertSame(
             ['(foo.fs) -> (foo.sd)', '(b.fs) -> (b.sd)'],
-            array_map(static fn (MovementEdge $edge): string => (string) $edge, $space->edgesBetween('*.fs', ['state' => 'sd'])),
+            array_map(static fn (MovementEdge $edge): string => (string) $edge, $space->edgesBetween('*.fs', ['stt' => 'sd'])),
         );
     }
 
@@ -182,8 +182,8 @@ final class SlotSpaceTest extends TestCase
     {
         $space = SlotSpace::define([
             'loc'   => ['foo'],
-            'state' => ['fs', 'sd', 'ret'],
-        ])->applyEdgeRules([
+            'stt'   => ['fs', 'sd', 'ret'],
+        ])->edgeRules([
             EdgeRule::allowLabeled('advance', 'foo.fs', 'foo.sd|ret'),
             EdgeRule::deny(null, 'foo.fs', 'foo.ret'),
         ]);
@@ -202,7 +202,7 @@ final class SlotSpaceTest extends TestCase
         */
 
         $space = $this->makeWarehouseSpace()
-            ->applyEdgeRules(
+            ->edgeRules(
                 RuleSet::from(
                     EdgeRule::allowLabeled('advance', 'foo.fs', 'foo.sd'),
                 )->meta(['channel' => 'ops']),
@@ -215,7 +215,7 @@ final class SlotSpaceTest extends TestCase
 
     public function testGetEdgesFromUsesNullForSinkEdges(): void
     {
-        $space = $this->makeWarehouseSpace()->applyEdgeRules([
+        $space = $this->makeWarehouseSpace()->edgeRules([
             EdgeRule::allowLabeled('complete', 'foo.sd', null),
         ]);
 
@@ -230,11 +230,11 @@ final class SlotSpaceTest extends TestCase
     {
         $left = SlotSpace::define([
             'loc'   => ['foo'],
-            'state' => ['fs'],
+            'stt'   => ['fs'],
         ]);
         $right = SlotSpace::define([
             'zone'  => ['a'],
-            'state' => ['held'],
+            'stt'   => ['held'],
         ]);
 
         self::assertNotSame($left->nilSlot(), $right->nilSlot());
@@ -354,7 +354,7 @@ final class SlotSpaceTest extends TestCase
     public function testSlotPatternMatchesUsesDimensionAccessors(): void
     {
         $space = $this->makeWarehouseSpace();
-        $pattern = SlotPattern::from(['loc' => 'foo', 'state' => 'fs'], $space);
+        $pattern = SlotPattern::from(['loc' => 'foo', 'stt' => 'fs'], $space);
 
         self::assertTrue($pattern->matches($space->slot('foo.fs')));
         self::assertFalse($pattern->matches($space->slot('foo.sd')));
@@ -365,7 +365,7 @@ final class SlotSpaceTest extends TestCase
     {
         return SlotSpace::define([
             'loc'   => ['foo', 'faz', 'bar'],
-            'state' => ['fs', 'sd'],
+            'stt'   => ['fs', 'sd'],
         ]);
     }
 

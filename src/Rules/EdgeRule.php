@@ -2,10 +2,14 @@
 
 declare(strict_types=1);
 
-namespace Nandan108\SlotFlow;
+namespace Nandan108\SlotFlow\Rules;
+
+use Nandan108\SlotFlow\SlotSpace;
 
 /**
  * @psalm-import-type TSlotPattern from SlotSpace
+ *
+ * @api
  */
 final class EdgeRule
 {

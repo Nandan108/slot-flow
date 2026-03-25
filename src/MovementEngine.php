@@ -4,8 +4,23 @@ declare(strict_types=1);
 
 namespace Nandan108\SlotFlow;
 
+use Nandan108\SlotFlow\Contracts\AllocationPolicyInterface;
+use Nandan108\SlotFlow\Contracts\EdgeFilterPolicyInterface;
+use Nandan108\SlotFlow\Contracts\EdgeOrderingPolicyInterface;
+use Nandan108\SlotFlow\Contracts\QttyConstraintPolicyInterface;
+use Nandan108\SlotFlow\Internal\CascadeStep;
+use Nandan108\SlotFlow\Results\MovementEvent;
+use Nandan108\SlotFlow\Runtime\AllocationDecision;
+use Nandan108\SlotFlow\Runtime\CascadeContext;
+
 /**
  * @template TQtty of int|float
+ *
+ * @psalm-import-type TSlotPattern from SlotSpace
+ * @psalm-import-type TSlotKey from SlotSpace
+ * @psalm-import-type TDimensionValuePattern from SlotSpace
+ *
+ * @api
  */
 final class MovementEngine
 {
@@ -20,7 +35,7 @@ final class MovementEngine
     public function execute(
         Inventory $inventory,
         SlotSpace $space,
-        Cascade $cascade,
+        string | Cascade $cascade,
         int | float $quantity,
         mixed $subject = null,
         array $appContext = [],
@@ -34,6 +49,10 @@ final class MovementEngine
         /** @var list<MovementEvent<TQtty>> $events */
         $events = [];
 
+        if (is_string($cascade)) {
+            $cascade = $space->getCascade($cascade);
+        }
+
         foreach ($cascade->steps() as $step) {
             if ($remaining <= 0) {
                 break;
@@ -41,7 +60,7 @@ final class MovementEngine
 
             // Resolve edges for the step based on the current context and inventory state
             $edges = $this->resolveStepEdges($space, $step, $appContext);
-            $stepContext = new CascadeContext($edges, $inventory, $remaining, $subject, $appContext);
+            $stepContext = new CascadeContext($space, $edges, $inventory, $remaining, $subject, $appContext);
 
             foreach ($step->filterPolicies as $policy) {
                 if (!is_callable($policy) && !$policy instanceof EdgeFilterPolicyInterface) {
@@ -49,7 +68,7 @@ final class MovementEngine
                 }
 
                 $edges = $this->filterEdges($policy, $edges, $stepContext);
-                $stepContext = new CascadeContext($edges, $inventory, $remaining, $subject, $appContext);
+                $stepContext = new CascadeContext($space, $edges, $inventory, $remaining, $subject, $appContext);
             }
 
             foreach ($step->orderingPolicies as $policy) {
@@ -58,7 +77,7 @@ final class MovementEngine
                 }
 
                 $edges = $this->orderEdges($policy, $edges, $stepContext);
-                $stepContext = new CascadeContext($edges, $inventory, $remaining, $subject, $appContext);
+                $stepContext = new CascadeContext($space, $edges, $inventory, $remaining, $subject, $appContext);
             }
 
             /** @var list<AllocationDecision> $decisions */
@@ -138,17 +157,17 @@ final class MovementEngine
     }
 
     /**
-     * @param array<mixed> $context
-     *
      * @return list<MovementEdge>
      */
     private function resolveStepEdges(SlotSpace $space, CascadeStep $step, array $context): array
     {
         if (null !== $step->edgeLabels) {
+            /** @var array{params?: array<string, non-empty-string>} $context */
+            $params = array_map('strval', $context['params'] ?? []);
             // Resolve edge labels to actual edges in the space
-            /** @var list<non-empty-string> $labels */
             $labels = array_map(
-                fn (string $label): string => $this->resolveRequiredStringParameter($label, $context),
+                // fn (string $label): string => $this->resolveRequiredStringParameter($label, $context),
+                fn (string $label): string => $this->resolveStringParameter($label, $params),
                 $step->edgeLabels,
             );
 
@@ -166,22 +185,26 @@ final class MovementEngine
      * @param array<mixed>                               $context
      * @param string|array<int|string, string|null>|null $pattern
      *
-     * @psalm-return string|array<int|string, string|null>|null
+     * @psalm-param TSlotPattern $pattern
+     *
+     * @psalm-return TSlotPattern
      */
     private function resolvePatternParameters(string | array | null $pattern, array $context): string | array | null
     {
         if (null === $pattern) {
             return null;
         }
+        /** @var array{params?: array<string, non-empty-string>} $context */
+        $params = array_map('strval', $context['params'] ?? []);
 
         if (is_string($pattern)) {
-            return $this->resolveStringParameter($pattern, $context, true);
+            return $this->resolveStringParameter($pattern, $params);
         }
 
         $resolved = [];
         foreach ($pattern as $key => $value) {
             $resolved[$key] = is_string($value)
-                ? $this->resolveStringParameter($value, $context, true)
+                ? $this->resolveStringParameter($value, $params)
                 : $value;
         }
 
@@ -189,50 +212,37 @@ final class MovementEngine
     }
 
     /**
-     * @param array<mixed> $context
+     * Resolve a string parameter that may contain placeholders in the form of {placeholderName}.
+     *
+     * @param array<string, string> $params
+     * @param non-empty-string      $value
+     *
+     * @psalm-return non-empty-string
      */
-    private function resolveStringParameter(string $value, array $context, bool $allowNull = false): ?string
+    private function resolveStringParameter(string $value, array $params): string
     {
-        $params = $context['params'] ?? [];
-        if (!is_array($params) || [] === $params) {
+        // no params passe: return as is
+        if (!$params) {
             return $value;
         }
 
-        if (1 === preg_match('/^\{([A-Za-z_][A-Za-z0-9_]*)\}$/', $value, $matches)) {
-            $resolved = $params[$matches[1]] ?? $value;
-
-            if (null === $resolved && $allowNull) {
-                return null;
-            }
-
-            if (is_scalar($resolved)) {
-                return (string) $resolved;
-            }
-
-            return $value;
+        // simple placeholder case: whole value is a single placeholder
+        if (1 === preg_match('/^\{([-a-z_]*)\}$/i', $value, $matches)) {
+            return $params[$matches[1]] ?? $value ?: $value;
         }
 
-        return preg_replace_callback(
-            '/\{([A-Za-z_][A-Za-z0-9_]*)\}/',
-            static function (array $matches) use ($params, $value): string {
-                $resolved = $params[$matches[1]] ?? $matches[0];
+        // general case: replace any placeholder within the string
+        $resolved = preg_replace_callback(
+            '/\{([-a-z_]*)\}/i',
+            static function (array $matches) use ($params) {
+                $resolved = $params[$matches[1]] ?? null;
 
-                if (null === $resolved) {
-                    throw new \InvalidArgumentException("Parameter '{$matches[1]}' cannot be null inside pattern '$value'");
-                }
-
-                return is_scalar($resolved) ? (string) $resolved : $matches[0];
+                return $resolved ?? "\{$matches[0]\}" ?: "\{$matches[0]\}";
             },
             $value,
-        ) ?? $value;
-    }
+        );
 
-    /**
-     * @param array<mixed> $context
-     */
-    private function resolveRequiredStringParameter(string $value, array $context): string
-    {
-        return $this->resolveStringParameter($value, $context) ?? $value;
+        return $resolved ?? $value ?: $value;
     }
 
     /**
@@ -295,6 +305,7 @@ final class MovementEngine
         mixed $subject,
         array $context,
     ): int | float {
+        $space = $edge->from->space;
         $movable = $requested;
 
         if (!$edge->from->isNil()) {
@@ -307,7 +318,7 @@ final class MovementEngine
                 continue;
             }
 
-            $stepContext = new CascadeContext([$edge], $inventory, $quantity, $subject, $context);
+            $stepContext = new CascadeContext($space, [$edge], $inventory, $quantity, $subject, $context);
             $limit = $policy instanceof QttyConstraintPolicyInterface
                 ? $policy->constraint($edge, $stepContext)
                 : $policy($edge, $stepContext);

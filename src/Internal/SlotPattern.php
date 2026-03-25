@@ -2,13 +2,18 @@
 
 declare(strict_types=1);
 
-namespace Nandan108\SlotFlow;
+namespace Nandan108\SlotFlow\Internal;
+
+use Nandan108\SlotFlow\Slot;
+use Nandan108\SlotFlow\SlotSpace;
 
 /**
  * @psalm-import-type TSlotPattern from SlotSpace
  * @psalm-import-type TSlotPartial from SlotSpace
  *
  * Union of partial slots.
+ *
+ * @internal
  */
 final class SlotPattern
 {

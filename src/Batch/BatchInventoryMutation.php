@@ -2,10 +2,14 @@
 
 declare(strict_types=1);
 
-namespace Nandan108\SlotFlow;
+namespace Nandan108\SlotFlow\Batch;
+
+use Nandan108\SlotFlow\Slot;
 
 /**
  * @template TSubject
+ *
+ * @api
  */
 final class BatchInventoryMutation
 {

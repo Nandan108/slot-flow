@@ -26,6 +26,21 @@
                 <directory name="tests" />
             </errorLevel>
         </MissingOverrideAttribute>
+        <InternalClass>
+            <errorLevel type="suppress">
+                <directory name="tests" />
+            </errorLevel>
+        </InternalClass>
+        <InternalMethod>
+            <errorLevel type="suppress">
+                <directory name="tests" />
+            </errorLevel>
+        </InternalMethod>
+        <InternalProperty>
+            <errorLevel type="suppress">
+                <directory name="tests" />
+            </errorLevel>
+        </InternalProperty>
     <!--
         <MixedArgument>
             <errorLevel type="suppress">

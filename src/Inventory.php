@@ -12,6 +12,8 @@ namespace Nandan108\SlotFlow;
  *
  * @psalm-type TQtty = int|float
  * @psalm-type TInventoryTuple = array{0: Slot|TSlotValues, 1: TQtty, 2?: array<string, mixed>}
+ *
+ * @api
  */
 final class Inventory
 {

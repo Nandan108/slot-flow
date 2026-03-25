@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace Nandan108\SlotFlow;
 
+/**
+ * @api
+ */
 final class MovementEdge
 {
     public function __construct(

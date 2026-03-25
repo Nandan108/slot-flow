@@ -2,10 +2,12 @@
 
 declare(strict_types=1);
 
-namespace Nandan108\SlotFlow;
+namespace Nandan108\SlotFlow\Rules;
 
 /**
  * @template TRuleType of SlotRule|EdgeRule
+ *
+ * @api
  */
 final class RuleSet
 {

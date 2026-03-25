@@ -2,13 +2,20 @@
 
 declare(strict_types=1);
 
-namespace Nandan108\SlotFlow;
+namespace Nandan108\SlotFlow\Batch;
+
+use Nandan108\SlotFlow\Inventory;
+use Nandan108\SlotFlow\MovementResult;
+use Nandan108\SlotFlow\Slot;
+use Nandan108\SlotFlow\SlotSpace;
 
 /**
  * @template TSubject
  *
  * @psalm-import-type TSlotPattern from SlotSpace
  * @psalm-import-type TSlotValues from SlotSpace
+ *
+ * @api
  */
 final class InventoryBatch
 {

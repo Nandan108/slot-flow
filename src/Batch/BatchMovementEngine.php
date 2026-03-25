@@ -2,8 +2,15 @@
 
 declare(strict_types=1);
 
-namespace Nandan108\SlotFlow;
+namespace Nandan108\SlotFlow\Batch;
 
+use Nandan108\SlotFlow\Cascade;
+use Nandan108\SlotFlow\MovementEngine;
+use Nandan108\SlotFlow\SlotSpace;
+
+/**
+ * @api
+ */
 final class BatchMovementEngine
 {
     public function __construct(
@@ -18,7 +25,7 @@ final class BatchMovementEngine
      *
      * @param InventoryBatch             $batch   the batch of inventory items to move
      * @param SlotSpace                  $space   the slot space used to resolve cascade steps
-     * @param Cascade                    $cascade the cascade containing the movement rules
+     * @param string|Cascade             $cascade the cascade containing the movement rules
      * @param array<mixed>               $context execution context forwarded to the cascade engine
      * @param array<string, scalar|null> $params  cascade parameter substitutions forwarded to the cascade engine
      *
@@ -31,7 +38,7 @@ final class BatchMovementEngine
     public function execute(
         InventoryBatch $batch,
         SlotSpace $space,
-        Cascade $cascade,
+        string | Cascade $cascade,
         array $context = [],
         array $params = [],
     ): InventoryBatch {

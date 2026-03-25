@@ -2,8 +2,16 @@
 
 declare(strict_types=1);
 
-namespace Nandan108\SlotFlow;
+namespace Nandan108\SlotFlow\Runtime;
 
+use Nandan108\SlotFlow\Inventory;
+use Nandan108\SlotFlow\MovementEdge;
+use Nandan108\SlotFlow\Slot;
+use Nandan108\SlotFlow\SlotSpace;
+
+/**
+ * @api
+ */
 final class CascadeContext
 {
     /**
@@ -11,6 +19,7 @@ final class CascadeContext
      * @param array<mixed>       $context
      */
     public function __construct(
+        public readonly SlotSpace $space,
         public readonly array $edges,
         public readonly Inventory $inventory,
         public readonly int | float $quantity,

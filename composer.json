@@ -1,5 +1,6 @@
 {
     "name": "nandan108/slot-flow",
+    "description": "SlotFlow is a domain-neutral, deterministic engine for modeling and executing quantity flows across a multidimensional state space.",
     "type": "library",
     "license": "MIT",
     "autoload": {

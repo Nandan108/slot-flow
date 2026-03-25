@@ -2,8 +2,16 @@
 
 declare(strict_types=1);
 
-namespace Nandan108\SlotFlow;
+namespace Nandan108\SlotFlow\Policies;
 
+use Nandan108\SlotFlow\Contracts\EdgeFilterPolicyInterface;
+use Nandan108\SlotFlow\Contracts\EdgeOrderingPolicyInterface;
+use Nandan108\SlotFlow\MovementEdge;
+use Nandan108\SlotFlow\Runtime\CascadeContext;
+
+/**
+ * @api
+ */
 final class DistancePolicy implements EdgeFilterPolicyInterface, EdgeOrderingPolicyInterface
 {
     public function __construct(
@@ -39,6 +47,7 @@ final class DistancePolicy implements EdgeFilterPolicyInterface, EdgeOrderingPol
 
     private function distanceFor(MovementEdge $edge, CascadeContext $ctx): int | float
     {
+        /** @psalm-var array<int|float>|callable(MovementEdge, CascadeContext):int|float $distance */
         $distance = $ctx->context['distance'] ?? null;
 
         if (is_callable($distance)) {

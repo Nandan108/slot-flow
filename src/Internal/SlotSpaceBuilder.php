@@ -2,8 +2,16 @@
 
 declare(strict_types=1);
 
-namespace Nandan108\SlotFlow;
+namespace Nandan108\SlotFlow\Internal;
 
+use Nandan108\SlotFlow\Rules\EdgeRule;
+use Nandan108\SlotFlow\Rules\RuleSet;
+use Nandan108\SlotFlow\Rules\SlotRule;
+use Nandan108\SlotFlow\SlotSpace;
+
+/**
+ * @internal
+ */
 final class SlotSpaceBuilder
 {
     /** @var RuleSet<SlotRule> */
@@ -46,7 +54,7 @@ final class SlotSpaceBuilder
     public function compile(): SlotSpace
     {
         return $this->space
-            ->applySlotRules($this->slotRules->all())
-            ->applyEdgeRules($this->edgeRules->all());
+            ->slotRules($this->slotRules->all())
+            ->edgeRules($this->edgeRules->all());
     }
 }

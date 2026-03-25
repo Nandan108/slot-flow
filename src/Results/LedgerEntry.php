@@ -2,8 +2,13 @@
 
 declare(strict_types=1);
 
-namespace Nandan108\SlotFlow;
+namespace Nandan108\SlotFlow\Results;
 
+use Nandan108\SlotFlow\MovementEdge;
+
+/**
+ * @api
+ */
 final class LedgerEntry
 {
     /**

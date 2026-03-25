@@ -4,11 +4,11 @@ declare(strict_types=1);
 
 namespace Tests;
 
-use Nandan108\SlotFlow\AllocationDecision;
 use Nandan108\SlotFlow\Cascade;
-use Nandan108\SlotFlow\CascadeContext;
 use Nandan108\SlotFlow\Inventory;
 use Nandan108\SlotFlow\MovementEngine;
+use Nandan108\SlotFlow\Runtime\AllocationDecision;
+use Nandan108\SlotFlow\Runtime\CascadeContext;
 use Nandan108\SlotFlow\SlotSpace;
 use PHPUnit\Framework\TestCase;
 
@@ -18,7 +18,7 @@ final class MovementEngineTest extends TestCase
     {
         $space = SlotSpace::define([
             'loc'   => ['foo'],
-            'state' => ['fs'],
+            'stt'   => ['fs'],
         ]);
 
         $fooFs = $space->slot('foo.fs');
@@ -45,7 +45,7 @@ final class MovementEngineTest extends TestCase
     {
         $space = SlotSpace::define([
             'loc'   => ['foo'],
-            'state' => ['fs'],
+            'stt'   => ['fs'],
         ]);
 
         $fooFs = $space->slot('foo.fs');
@@ -72,7 +72,7 @@ final class MovementEngineTest extends TestCase
     {
         $space = SlotSpace::define([
             'loc'   => ['foo'],
-            'state' => ['fs', 'sd'],
+            'stt'   => ['fs', 'sd'],
         ]);
 
         $inventory = new Inventory($space, [[$space->slot('foo.fs'), 2]]);
@@ -90,8 +90,8 @@ final class MovementEngineTest extends TestCase
     public function testItExecutesCascadeAllocationPolicies(): void
     {
         $space = SlotSpace::define([
-            'loc'   => ['a', 'b', 'sink'],
-            'state' => ['fs', 'sd'],
+            'loc'   => ['a', 'b', 'dest'],
+            'stt'   => ['fs', 'sd'],
         ]);
 
         $inventory = new Inventory($space, [
@@ -100,7 +100,7 @@ final class MovementEngineTest extends TestCase
         ]);
 
         $cascade = Cascade::define('allocate', static fn (Cascade $cascade) => $cascade
-            ->move('a|b.fs', 'sink.sd')
+            ->move('a|b.fs', 'dest.sd')
             ->allocate(static function (CascadeContext $context): array {
                 $edges = $context->edges;
 
@@ -139,10 +139,10 @@ final class MovementEngineTest extends TestCase
     public function testItCanExecuteStepsResolvedFromLabeledEdges(): void
     {
         $space = SlotSpace::define([
-            'loc'   => ['foo', 'sink'],
-            'state' => ['fs', 'sd'],
-        ])->applyEdgeRules([
-            \Nandan108\SlotFlow\EdgeRule::allowLabeled('sell', 'foo.fs', 'sink.sd'),
+            'loc'   => ['foo', 'dest'],
+            'stt'   => ['fs', 'sd'],
+        ])->edgeRules([
+            \Nandan108\SlotFlow\Rules\EdgeRule::allowLabeled('sell', 'foo.fs', 'dest.sd'),
         ]);
 
         $inventory = new Inventory($space, [[$space->slot('foo.fs'), 2]]);
@@ -152,7 +152,7 @@ final class MovementEngineTest extends TestCase
 
         self::assertSame(0, $result->remaining);
         self::assertCount(1, $result->events);
-        self::assertSame('(foo.fs) -> (sink.sd)', (string) $result->events[0]->edge);
+        self::assertSame('(foo.fs) -> (dest.sd)', (string) $result->events[0]->edge);
     }
 
     public function testItCanSubstituteCascadeParametersBeforePatternExpansion(): void

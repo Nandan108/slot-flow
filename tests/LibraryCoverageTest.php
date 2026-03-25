@@ -4,29 +4,31 @@ declare(strict_types=1);
 
 namespace Tests;
 
-use Nandan108\SlotFlow\AllocationDecision;
-use Nandan108\SlotFlow\AllocationPolicyInterface;
-use Nandan108\SlotFlow\AvailableInventorySortPolicy;
-use Nandan108\SlotFlow\BatchItem;
-use Nandan108\SlotFlow\BatchMovementEngine;
+use Nandan108\SlotFlow\Batch\BatchItem;
+use Nandan108\SlotFlow\Batch\BatchLedgerEntry;
+use Nandan108\SlotFlow\Batch\BatchMovementEngine;
+use Nandan108\SlotFlow\Batch\InventoryBatch;
 use Nandan108\SlotFlow\Cascade;
-use Nandan108\SlotFlow\CascadeContext;
-use Nandan108\SlotFlow\DefaultSlotKeyCodec;
-use Nandan108\SlotFlow\DimensionPriority;
-use Nandan108\SlotFlow\DistancePolicy;
-use Nandan108\SlotFlow\EdgeFilterPolicyInterface;
-use Nandan108\SlotFlow\EdgeOrderingPolicyInterface;
-use Nandan108\SlotFlow\EdgeRule;
+use Nandan108\SlotFlow\Codecs\DefaultSlotKeyCodec;
+use Nandan108\SlotFlow\Contracts\AllocationPolicyInterface;
+use Nandan108\SlotFlow\Contracts\EdgeFilterPolicyInterface;
+use Nandan108\SlotFlow\Contracts\EdgeOrderingPolicyInterface;
+use Nandan108\SlotFlow\Contracts\QttyConstraintPolicyInterface;
+use Nandan108\SlotFlow\Internal\SlotPattern;
 use Nandan108\SlotFlow\Inventory;
-use Nandan108\SlotFlow\InventoryBatch;
 use Nandan108\SlotFlow\MovementEdge;
 use Nandan108\SlotFlow\MovementEngine;
-use Nandan108\SlotFlow\MovementEvent;
 use Nandan108\SlotFlow\MovementResult;
-use Nandan108\SlotFlow\QttyConstraintPolicyInterface;
+use Nandan108\SlotFlow\Policies\AvailableInventorySortPolicy;
+use Nandan108\SlotFlow\Policies\DimensionPriority;
+use Nandan108\SlotFlow\Policies\DistancePolicy;
+use Nandan108\SlotFlow\Results\LedgerEntry;
+use Nandan108\SlotFlow\Results\MovementEvent;
+use Nandan108\SlotFlow\Rules\EdgeRule;
+use Nandan108\SlotFlow\Rules\SlotRule;
+use Nandan108\SlotFlow\Runtime\AllocationDecision;
+use Nandan108\SlotFlow\Runtime\CascadeContext;
 use Nandan108\SlotFlow\Slot;
-use Nandan108\SlotFlow\SlotPattern;
-use Nandan108\SlotFlow\SlotRule;
 use Nandan108\SlotFlow\SlotSpace;
 use PHPUnit\Framework\TestCase;
 
@@ -36,7 +38,7 @@ final class LibraryCoverageTest extends TestCase
     {
         $space = SlotSpace::define([
             'loc'   => ['foo', 'bar'],
-            'state' => ['fs', 'sd'],
+            'stt'   => ['fs', 'sd'],
         ]);
         $codec = $space->codec;
 
@@ -48,7 +50,7 @@ final class LibraryCoverageTest extends TestCase
         self::assertSame('nil', $codec->serialize(null));
         self::assertNull($codec->deserialize(''));
         self::assertNull($codec->deserialize('nil'));
-        self::assertSame(['loc' => 'foo', 'state' => 'fs'], $codec->deserialize('foo.fs'));
+        self::assertSame(['loc' => 'foo', 'stt' => 'fs'], $codec->deserialize('foo.fs'));
         self::assertSame(['bar'], $codec->matchDimensionValues('loc', 'bar'));
         self::assertSame(['foo', 'bar'], $codec->matchDimensionValues('loc', '*'));
 
@@ -61,7 +63,7 @@ final class LibraryCoverageTest extends TestCase
     {
         $space = SlotSpace::define([
             'loc'   => ['foo', 'bar'],
-            'state' => ['fs', 'sd'],
+            'stt'   => ['fs', 'sd'],
         ]);
         $codec = $space->codec;
 
@@ -136,7 +138,7 @@ final class LibraryCoverageTest extends TestCase
     {
         $space = SlotSpace::define([
             'loc'   => ['foo'],
-            'state' => ['fs', 'sd'],
+            'stt'   => ['fs', 'sd'],
         ]);
 
         $inventory = new Inventory($space);
@@ -151,8 +153,8 @@ final class LibraryCoverageTest extends TestCase
         $inventory->addFromRows(
             [['loc' => 'foo', 'fs' => 1, 'sd' => 2]],
             static fn (array $row): array => [
-                [['loc' => $row['loc'], 'state' => 'fs'], $row['fs']],
-                [['loc' => $row['loc'], 'state' => 'sd'], $row['sd']],
+                [['loc' => $row['loc'], 'stt' => 'fs'], $row['fs']],
+                [['loc' => $row['loc'], 'stt' => 'sd'], $row['sd']],
             ],
         );
 
@@ -198,7 +200,7 @@ final class LibraryCoverageTest extends TestCase
             static fn (array $row): string => $row['variant'],
             /** @param TRow $row */
             static fn (array $row): array => [
-                [['loc' => $row['loc'], 'state' => 'fs'], $row['qty']],
+                [['loc' => $row['loc'], 'stt' => 'fs'], $row['qty']],
             ],
             /** @param list<TRow> $rows */
             static fn (array $rows): int => $rows[0]['qty'],
@@ -237,7 +239,7 @@ final class LibraryCoverageTest extends TestCase
     {
         $space = SlotSpace::define([
             'loc'   => ['foo', 'bar'],
-            'state' => ['fs', 'sd'],
+            'stt'   => ['fs', 'sd'],
         ]);
         $edge = new MovementEdge($space->slot('foo.fs'), $space->slot('bar.sd'));
         /** @var MovementEvent<int> */
@@ -278,12 +280,13 @@ final class LibraryCoverageTest extends TestCase
     {
         $space = SlotSpace::define([
             'loc'   => ['foo', 'bar'],
-            'state' => ['fs', 'sd'],
+            'stt'   => ['fs', 'sd'],
         ]);
 
         $batch = new InventoryBatch([
             new BatchItem('A', 2, new Inventory($space)),
             new BatchItem('B', 1, new Inventory($space)),
+            new BatchItem('C', 4, new Inventory($space)),
         ]);
 
         /** @var MovementEvent<int> $aEvent */
@@ -322,13 +325,68 @@ final class LibraryCoverageTest extends TestCase
         self::assertSame('(nil) -> (foo.fs)', (string) $entries[1]->edge);
     }
 
+    public function testMovementResultsCollapseOppositeEventsAndBatchOutgressSkipsUntouchedItems(): void
+    {
+        $space = SlotSpace::define([
+            'loc' => ['foo', 'bar'],
+            'stt' => ['fs', 'sd'],
+        ]);
+
+        $forward = new MovementEvent(new MovementEdge($space->slot('foo.fs'), $space->slot('bar.sd')), 2, 5, 1);
+        $reverse = new MovementEvent(new MovementEdge($space->slot('bar.sd'), $space->slot('foo.fs')), 2, 3, 3);
+        $balanced = new MovementResult([$forward, $reverse], 0);
+
+        self::assertSame([], $balanced->mutations());
+
+        $entryWithNilSink = new LedgerEntry(
+            new MovementEdge($space->slot('foo.fs'), $space->nilSlot()),
+            2,
+            5,
+            null,
+        );
+        self::assertSame(3, $entryWithNilSink->finalFrom());
+        self::assertNull($entryWithNilSink->finalTo());
+        self::assertNull((new LedgerEntry(
+            new MovementEdge($space->nilSlot(), $space->slot('foo.fs')),
+            1,
+            null,
+            2,
+        ))->finalFrom());
+
+        $batchEntryWithNilSource = new BatchLedgerEntry(
+            'A',
+            new MovementEdge($space->nilSlot(), $space->slot('foo.fs')),
+            1,
+            null,
+            2,
+        );
+        self::assertNull($batchEntryWithNilSource->finalFrom());
+        self::assertSame(3, $batchEntryWithNilSource->finalTo());
+        self::assertNull((new BatchLedgerEntry(
+            'B',
+            new MovementEdge($space->slot('foo.fs'), $space->nilSlot()),
+            2,
+            5,
+            null,
+        ))->finalTo());
+
+        $batch = new InventoryBatch([
+            new BatchItem('A', 2, new Inventory($space)),
+            new BatchItem('B', 2, new Inventory($space)),
+        ]);
+        $batch->items()[0]->setMovementResult($balanced);
+
+        self::assertSame([], $batch->mutations());
+        self::assertCount(2, $batch->ledgerEntries(['op' => 'balanced']));
+    }
+
     public function testInventoryPreservesPerSlotAttributesForConstraintPolicies(): void
     {
         /** @psalm-type TIfsRow = array{variant: non-empty-string, qty: int, ifs: int, inv: array{fs: int, sd: int}} */
         $space = SlotSpace::define([
             'loc'   => ['sup', 'wh1'],
-            'own'   => ['C'],
-            'state' => ['fs', 'sd'],
+            'own'   => ['CS'],
+            'stt'   => ['fs', 'sd'],
         ]);
 
         $batch = InventoryBatch::fromRows(
@@ -344,8 +402,8 @@ final class LibraryCoverageTest extends TestCase
             subjectGetter: static fn (array $row): string => $row['variant'],
             /** @param TIfsRow $row */
             slotRowGetter: static fn (array $row): array => [
-                [$space->slot('wh1.C.fs')->withMeta(['ifs' => $row['ifs']]), $row['inv']['fs']],
-                [$space->slot('sup.C.sd'), $row['inv']['sd']],
+                [$space->slot('wh1.CS.fs')->withMeta(['ifs' => $row['ifs']]), $row['inv']['fs']],
+                [$space->slot('sup.CS.sd'), $row['inv']['sd']],
             ],
             /** @param list<TIfsRow> $rows */
             quantityGetter: static fn (array $rows): int => $rows[0]['qty'],
@@ -353,11 +411,15 @@ final class LibraryCoverageTest extends TestCase
         );
 
         $cascade = Cascade::define('cancel', static fn (Cascade $cascade) => $cascade
-            ->move('sup.C.sd', 'wh1.C.fs')
+            ->move('sup.CS.sd', 'wh1.CS.fs')
             ->constraint(static function (MovementEdge $edge, CascadeContext $ctx): int | float {
                 $attrs = $ctx->slotAttributes($edge->to);
                 // initial consignment for-sale quantity
                 $ifs = (int) ($attrs['ifs'] ?? 0);
+
+                // cover direct attribute access and helper method branches
+                self::assertSame($ifs, $ctx->slotAttribute($edge->to, 'ifs', 0));
+
                 // target capacity is initial consignment minus current inventory on the slot
                 $targetCapacity = $ifs - (int) $ctx->inventory->get($edge->to);
 
@@ -374,17 +436,17 @@ final class LibraryCoverageTest extends TestCase
         self::assertNotNull($result);
         self::assertSame(2, $result->remaining);
         self::assertCount(1, $result->events);
-        self::assertSame('(sup.C.sd) -> (wh1.C.fs)', (string) $result->events[0]->edge);
+        self::assertSame('(sup.CS.sd) -> (wh1.CS.fs)', (string) $result->events[0]->edge);
         self::assertSame(1, $result->events[0]->quantity);
-        self::assertSame(['ifs' => 4], $batch->items()[0]->inventory->slotAttributes($space->slot('wh1.C.fs')));
+        self::assertSame(['ifs' => 4], $batch->items()[0]->inventory->slotAttributes($space->slot('wh1.CS.fs')));
     }
 
     public function testSlotPrimitivesAndRulesCoverHelpers(): void
     {
         $space = SlotSpace::define([
             'loc'   => ['foo', 'bar'],
-            'state' => ['fs', 'sd'],
-        ])->applyEdgeRules(EdgeRule::connect('foo.fs', 'bar.sd')->all());
+            'stt'   => ['fs', 'sd'],
+        ])->edgeRules(EdgeRule::connect('foo.fs', 'bar.sd')->all());
         $unlabeled = EdgeRule::allow('foo.fs', 'bar.sd');
 
         $foo = $space->slot('foo.fs');
@@ -395,7 +457,7 @@ final class LibraryCoverageTest extends TestCase
         self::assertFalse($foo->equals($bar));
         self::assertNull($unlabeled->label);
         self::assertSame(['capability' => 'hazmat'], SlotRule::allow('foo.fs')->meta(['capability' => 'hazmat'])->attributes);
-        self::assertSame(['bar.fs'], array_map(static fn (Slot $slot): string => $slot->key, $space->nilSlot()->with(['loc' => 'bar', 'state' => 'fs'])));
+        self::assertSame(['bar.fs'], array_map(static fn (Slot $slot): string => $slot->key, $space->nilSlot()->with(['loc' => 'bar', 'stt' => 'fs'])));
         self::assertSame([], $foo->with(['loc' => 'baz']));
         self::assertTrue($nilPattern->matches($space->nilSlot()));
         self::assertFalse($nilPattern->matches($foo));
@@ -403,72 +465,162 @@ final class LibraryCoverageTest extends TestCase
         self::assertArrayHasKey('bar.sd', $space->getEdgesFrom($foo));
     }
 
+    public function testSlotSpaceAndCascadeCoverRemainingFeatureBranches(): void
+    {
+        $space = SlotSpace::define([
+            'loc' => ['foo', 'bar'],
+            'stt' => ['fs', 'sd'],
+        ])->edgeRules([
+            EdgeRule::allowLabeled('ship', 'foo.fs', 'bar.sd'),
+            EdgeRule::allow('bar.fs', 'foo.sd'),
+        ]);
+
+        self::assertSame(
+            ['loc' => ['foo', 'bar'], 'stt' => ['fs', 'sd']],
+            $space->dimensions(),
+        );
+        self::assertSame(
+            [['loc' => 'foo']],
+            $space->expandSlotPattern(['foo', null]),
+        );
+        self::assertSame(['foo.fs'], array_map(
+            static fn (MovementEdge $edge): string => $edge->from->key,
+            $space->edgesByLabels(['ship']),
+        ));
+
+        $assoc = SlotSpace::define([
+            'loc' => ['foo', 'bar'],
+            'stt' => ['fs', 'sd'],
+        ]);
+        $assoc->cascade('assoc', [['from' => 'foo.fs', 'to' => 'bar.sd']]);
+        self::assertSame('foo.fs', $assoc->getCascade('assoc')->steps()[0]->from);
+        self::assertSame('bar.sd', $assoc->getCascade('assoc')->steps()[0]->to);
+
+        $destroyCascade = Cascade::define('destroyer', static fn (Cascade $cascade) => $cascade
+            ->stepByLabeledEdges('ship')
+            ->destroy('bar.sd'));
+        self::assertNull($destroyCascade->steps()[1]->to);
+        self::assertSame('bar.sd', $destroyCascade->steps()[1]->from);
+
+        try {
+            $space->validateKnownDimensionNames(['bad1', 'bad2']);
+            self::fail('Expected multiple unknown dimensions rejection');
+        } catch (\InvalidArgumentException $e) {
+            self::assertSame('Invalid slot values: unknown dimensions: [bad1, bad2]', $e->getMessage());
+        }
+
+        try {
+            $space->expandSlotPattern(['foo']);
+            self::fail('Expected tuple length rejection');
+        } catch (\InvalidArgumentException $e) {
+            self::assertStringContainsString('same number of elements as dimensions', $e->getMessage());
+        }
+
+        try {
+            $space->slot(['loc' => 'foo', 'extra' => 'oops']);
+            self::fail('Expected invalid slot array rejection');
+        } catch (\InvalidArgumentException $e) {
+            self::assertStringContainsString('missing dimensions: [stt]', $e->getMessage());
+            self::assertStringContainsString('unknown dimensions: [extra]', $e->getMessage());
+        }
+
+        try {
+            (new Cascade('empty'))->stepByLabeledEdges();
+            self::fail('Expected empty label rejection');
+        } catch (\InvalidArgumentException $e) {
+            self::assertSame('At least one edge label is required', $e->getMessage());
+        }
+    }
+
     public function testPoliciesOrderAndFilterEdges(): void
     {
         $space = SlotSpace::define([
-            'loc'   => ['a', 'b', 'sink'],
-            'own'   => ['C', 'F'],
-            'state' => ['fs', 'sd'],
+            'loc'   => ['a', 'b', 'dest'],
+            'own'   => ['CS', 'FP'],
+            'stt'   => ['fs', 'sd'],
         ]);
 
         $edges = [
-            new MovementEdge($space->slot('b.C.fs'), $space->slot('sink.C.sd')),
-            new MovementEdge($space->slot('a.F.fs'), $space->slot('sink.C.sd')),
-            new MovementEdge($space->slot('a.C.fs'), $space->slot('sink.C.sd')),
+            new MovementEdge($space->slot('b.CS.fs'), $space->slot('dest.CS.sd')),
+            new MovementEdge($space->slot('a.FP.fs'), $space->slot('dest.CS.sd')),
+            new MovementEdge($space->slot('a.CS.fs'), $space->slot('dest.CS.sd')),
         ];
-        $context = new CascadeContext($edges, new Inventory($space), 1, null, [
+        $context = new CascadeContext($space, $edges, new Inventory($space), 1, null, [
             'distance' => [
-                'b.C.fs->sink.C.sd' => 20,
-                'a.F.fs->sink.C.sd' => 10,
-                'a.C.fs->sink.C.sd' => 5,
+                'b.CS.fs->dest.CS.sd' => 20,
+                'a.FP.fs->dest.CS.sd' => 10,
+                'a.CS.fs->dest.CS.sd' => 5,
             ],
         ]);
 
         $priority = new DimensionPriority([
             'loc' => ['a', 'b'],
-            'own' => ['C', 'F'],
+            'own' => ['CS', 'FP'],
         ]);
         $ordered = $priority->orderEdges($context);
-        self::assertSame(['a.C.fs', 'a.F.fs', 'b.C.fs'], array_map(static fn (MovementEdge $edge): string => $edge->from->key, $ordered));
+        self::assertSame(['a.CS.fs', 'a.FP.fs', 'b.CS.fs'], array_map(static fn (MovementEdge $edge): string => $edge->from->key, $ordered));
 
         $tiedEdges = [
-            new MovementEdge($space->slot('sink.C.fs'), $space->slot('sink.C.sd')),
-            new MovementEdge($space->slot('sink.F.fs'), $space->slot('sink.C.sd')),
+            new MovementEdge($space->slot('dest.CS.fs'), $space->slot('dest.CS.sd')),
+            new MovementEdge($space->slot('dest.FP.fs'), $space->slot('dest.CS.sd')),
         ];
-        $tied = $priority->orderEdges(new CascadeContext($tiedEdges, new Inventory($space), 1));
-        self::assertSame(['sink.C.fs', 'sink.F.fs'], array_map(static fn (MovementEdge $edge): string => $edge->from->key, $tied));
+        $tied = $priority->orderEdges(new CascadeContext($space, $tiedEdges, new Inventory($space), 1));
+        self::assertSame(['dest.CS.fs', 'dest.FP.fs'], array_map(static fn (MovementEdge $edge): string => $edge->from->key, $tied));
 
         $equalRankEdges = [
-            new MovementEdge($space->slot('a.C.fs'), $space->slot('sink.C.sd')),
-            new MovementEdge($space->slot('a.C.fs'), $space->slot('sink.F.sd')),
+            new MovementEdge($space->slot('a.CS.fs'), $space->slot('dest.CS.sd')),
+            new MovementEdge($space->slot('a.CS.fs'), $space->slot('dest.FP.sd')),
         ];
-        $equalRank = $priority->orderEdges(new CascadeContext($equalRankEdges, new Inventory($space), 1));
-        self::assertSame(['sink.C.sd', 'sink.F.sd'], array_map(static fn (MovementEdge $edge): string => $edge->to->key, $equalRank));
+        $equalRank = $priority->orderEdges(new CascadeContext($space, $equalRankEdges, new Inventory($space), 1));
+        self::assertSame(['dest.CS.sd', 'dest.FP.sd'], array_map(static fn (MovementEdge $edge): string => $edge->to->key, $equalRank));
+
+        $patternPriority = new DimensionPriority([
+            'loc' => ['a|b', 'dest'],
+            'own' => ['CS', 'FP'],
+        ]);
+        $groupedPatternEdges = [
+            new MovementEdge($space->slot('b.CS.fs'), $space->slot('dest.CS.sd')),
+            new MovementEdge($space->slot('a.FP.fs'), $space->slot('dest.CS.sd')),
+            new MovementEdge($space->slot('dest.CS.fs'), $space->slot('dest.CS.sd')),
+        ];
+        $groupedPatternOrdered = $patternPriority->orderEdges(new CascadeContext($space, $groupedPatternEdges, new Inventory($space), 1));
+        self::assertSame(
+            ['b.CS.fs', 'a.FP.fs', 'dest.CS.fs'],
+            array_map(static fn (MovementEdge $edge): string => $edge->from->key, $groupedPatternOrdered),
+        );
 
         $distancePolicy = new DistancePolicy(max: 10);
         $filtered = $distancePolicy->filterEdges($context);
-        self::assertSame(['a.F.fs', 'a.C.fs'], array_map(static fn (MovementEdge $edge): string => $edge->from->key, $filtered));
+        self::assertSame(['a.FP.fs', 'a.CS.fs'], array_map(static fn (MovementEdge $edge): string => $edge->from->key, $filtered));
 
         $availableInventory = new AvailableInventorySortPolicy();
-        $inventorySorted = $availableInventory->orderEdges(new CascadeContext($edges, new Inventory($space, [
-            [$space->slot('a.C.fs'), 1],
-            [$space->slot('a.F.fs'), 8],
-            [$space->slot('b.C.fs'), 3],
+        $inventorySorted = $availableInventory->orderEdges(new CascadeContext($space, $edges, new Inventory($space, [
+            [$space->slot('a.CS.fs'), 1],
+            [$space->slot('a.FP.fs'), 8],
+            [$space->slot('b.CS.fs'), 3],
         ]), 1));
-        self::assertSame(['a.F.fs', 'b.C.fs', 'a.C.fs'], array_map(static fn (MovementEdge $edge): string => $edge->from->key, $inventorySorted));
+        self::assertSame(['a.FP.fs', 'b.CS.fs', 'a.CS.fs'], array_map(static fn (MovementEdge $edge): string => $edge->from->key, $inventorySorted));
+        $nilPreferred = $availableInventory->orderEdges(new CascadeContext($space, [
+            new MovementEdge($space->slot('a.CS.fs'), $space->slot('dest.CS.sd')),
+            new MovementEdge($space->nilSlot(), $space->slot('dest.CS.sd')),
+        ], new Inventory($space, [
+            [$space->slot('a.CS.fs'), 99],
+        ]), 1));
+        self::assertFalse($nilPreferred[0]->from->isNil());
+        self::assertTrue($nilPreferred[1]->from->isNil());
 
-        $orderedByDistance = (new DistancePolicy())->orderEdges(new CascadeContext($edges, new Inventory($space), 1, null, [
+        $orderedByDistance = (new DistancePolicy())->orderEdges(new CascadeContext($space, $edges, new Inventory($space), 1, null, [
             'distance' => static fn (MovementEdge $edge): int => match ($edge->from->key) {
-                'b.C.fs' => 3,
-                'a.F.fs' => 2,
-                default  => 1,
+                'b.CS.fs' => 3,
+                'a.FP.fs' => 2,
+                default   => 1,
             },
         ]));
-        self::assertSame(['a.C.fs', 'a.F.fs', 'b.C.fs'], array_map(static fn (MovementEdge $edge): string => $edge->from->key, $orderedByDistance));
-        self::assertSame($edges, (new DistancePolicy())->filterEdges(new CascadeContext($edges, new Inventory($space), 1)));
-        self::assertSame(['b.C.fs', 'a.F.fs', 'a.C.fs'], array_map(
+        self::assertSame(['a.CS.fs', 'a.FP.fs', 'b.CS.fs'], array_map(static fn (MovementEdge $edge): string => $edge->from->key, $orderedByDistance));
+        self::assertSame($edges, (new DistancePolicy())->filterEdges(new CascadeContext($space, $edges, new Inventory($space), 1)));
+        self::assertSame(['b.CS.fs', 'a.FP.fs', 'a.CS.fs'], array_map(
             static fn (MovementEdge $edge): string => $edge->from->key,
-            (new DistancePolicy(max: 1))->orderEdges(new CascadeContext($edges, new Inventory($space), 1)),
+            (new DistancePolicy(max: 1))->orderEdges(new CascadeContext($space, $edges, new Inventory($space), 1)),
         ));
     }
 
@@ -476,8 +628,8 @@ final class LibraryCoverageTest extends TestCase
     public function testMovementEngineCoversCallableAndInterfacePolicyPaths(): void
     {
         $space = SlotSpace::define([
-            'loc'   => ['a', 'b', 'c', 'sink'],
-            'state' => ['fs', 'sd'],
+            'loc'   => ['a', 'b', 'cS', 'dest'],
+            'stt'   => ['fs', 'sd'],
         ]);
         $inventory = new Inventory($space, [
             [$space->slot('a.fs'), 4],
@@ -485,7 +637,7 @@ final class LibraryCoverageTest extends TestCase
         ]);
 
         $cascade = Cascade::define('policy-branches', static fn (Cascade $cascade) => $cascade
-            ->move('a|b.fs', 'sink.sd')
+            ->move('a|b.fs', 'dest.sd')
             ->filter(new class implements EdgeFilterPolicyInterface {
                 public function filterEdges(CascadeContext $ctx): array
                 {
@@ -515,7 +667,7 @@ final class LibraryCoverageTest extends TestCase
                     ];
                 }
             })
-            ->move('sink.sd', null));
+            ->move('dest.sd', null));
 
         $step = $cascade->steps()[0];
         $step->filterPolicies[] = new \stdClass();
@@ -537,7 +689,7 @@ final class LibraryCoverageTest extends TestCase
     public function testMovementEngineCoversDecisionLoopContinueAndBreakBranches(): void
     {
         $space = SlotSpace::define([
-            'loc'   => ['a', 'b', 'c', 'sink'],
+            'loc'   => ['a', 'b', 'c', 'dest'],
             'state' => ['fs', 'sd'],
         ]);
         $inventory = new Inventory($space, [
@@ -547,7 +699,7 @@ final class LibraryCoverageTest extends TestCase
         ]);
 
         $cascade = Cascade::define('decisions', static fn (Cascade $cascade) => $cascade
-            ->move('a|b|c.fs', 'sink.sd')
+            ->move('a|b|c.fs', 'dest.sd')
             ->allocate(new class implements AllocationPolicyInterface {
                 public function allocate(CascadeContext $ctx): array
                 {
@@ -576,7 +728,7 @@ final class LibraryCoverageTest extends TestCase
     public function testMovementEngineCanFilterEdgesUsingSubjectContext(): void
     {
         $space = SlotSpace::define([
-            'loc'   => ['a', 'b', 'sink'],
+            'loc'   => ['a', 'b', 'dest'],
             'state' => ['fs', 'sd'],
         ]);
         $inventory = new Inventory($space, [
@@ -585,7 +737,7 @@ final class LibraryCoverageTest extends TestCase
         ]);
 
         $cascade = Cascade::define('subject-filter', static fn (Cascade $cascade) => $cascade
-            ->move('a|b.fs', 'sink.sd')
+            ->move('a|b.fs', 'dest.sd')
             ->filter(static function (CascadeContext $ctx): array {
                 $allowedSources = is_array($ctx->subject) ? ($ctx->subject['allowed_sources'] ?? []) : [];
                 if (!is_array($allowedSources) || [] === $allowedSources) {
@@ -611,11 +763,38 @@ final class LibraryCoverageTest extends TestCase
         self::assertSame('b.fs', $result->events[0]->edge->from->key);
     }
 
+    public function testMovementEngineResolvesParamsInsideArrayPatternsWithoutTouchingNullWildcards(): void
+    {
+        $space = SlotSpace::define([
+            'loc' => ['a', 'b', 'dest'],
+            'stt' => ['fs', 'sd'],
+        ]);
+        $inventory = new Inventory($space, [
+            [$space->slot('a.fs'), 2],
+            [$space->slot('b.fs'), 3],
+        ]);
+
+        $cascade = Cascade::define('param-array-pattern', static fn (Cascade $cascade) => $cascade
+            ->move(['loc' => '{loc}', 'stt' => null], ['loc' => 'dest', 'stt' => 'sd']));
+
+        $result = (new MovementEngine())->execute(
+            inventory: $inventory,
+            space: $space,
+            cascade: $cascade,
+            quantity: 2,
+            params: ['loc' => 'a'],
+        );
+
+        self::assertSame(0, $result->remaining);
+        self::assertCount(1, $result->events);
+        self::assertSame('(a.fs) -> (dest.sd)', (string) $result->events[0]->edge);
+    }
+
     public function testMovementEngineBreaksEarlyAndCoversSlotSpaceErrorBranches(): void
     {
         $space = SlotSpace::define([
             'loc'   => ['foo', 'bar'],
-            'state' => ['fs', 'sd'],
+            'stt'   => ['fs', 'sd'],
             'empty' => [],
         ]);
         $inventory = new Inventory($space, [[$space->slot(['foo', 'fs', '*']), 1]]);
@@ -628,23 +807,23 @@ final class LibraryCoverageTest extends TestCase
 
         $denyFirst = SlotSpace::define([
             'loc'   => ['foo', 'bar'],
-            'state' => ['fs', 'sd'],
-        ])->applySlotRules([
+            'stt'   => ['fs', 'sd'],
+        ])->slotRules([
             SlotRule::deny('foo.fs'),
         ]);
         $sameSpace = SlotSpace::define([
             'loc'   => ['foo'],
-            'state' => ['fs'],
+            'stt'   => ['fs'],
         ]);
 
         self::assertNull($denyFirst->trySlot('foo.fs'));
         self::assertNotNull($denyFirst->trySlot('bar.fs'));
         self::assertSame([], $denyFirst->getEdgesFrom($denyFirst->slot('bar.fs')));
-        self::assertSame($sameSpace, $sameSpace->applySlotRules([]));
-        self::assertSame([[]], $denyFirst->expandSlotPattern(['state' => '*']));
+        self::assertSame($sameSpace, $sameSpace->slotRules([]));
+        self::assertSame([[]], $denyFirst->expandSlotPattern(['stt' => '*']));
         self::assertSame('foo.fs', SlotSpace::define([
             'loc'   => ['foo', 'bar'],
-            'state' => ['fs', 'sd'],
+            'stt'   => ['fs', 'sd'],
         ])->slot(['foo', 'fs'])->key);
         self::assertSame($denyFirst->nilSlot(), $denyFirst->trySlot('nil'));
         self::assertSame('test', SlotSpace::define(['kind' => ['test']])->dimensionValues('kind')[0]);
@@ -672,8 +851,8 @@ final class LibraryCoverageTest extends TestCase
 
         $cachedEdgesSpace = SlotSpace::define([
             'loc'   => ['foo', 'bar'],
-            'state' => ['fs', 'sd'],
-        ])->applyEdgeRules([
+            'stt'   => ['fs', 'sd'],
+        ])->edgeRules([
             EdgeRule::allowLabeled(null, 'foo.fs', 'bar.sd'),
         ]);
         $first = $cachedEdgesSpace->getEdgesFrom($cachedEdgesSpace->slot('foo.fs'));
