@@ -180,6 +180,8 @@ $reserve = Cascade::define('reserve', static fn (Cascade $c) => $c
 
 `DimensionPriority` accepts ordered dimension patterns, not just literal values. The patterns are expanded through the slot-space codec, so entries like `'wh*'` or `'wh1|wh2'` behave the same way they do in slot patterns. Each entry defines one priority tier, so all matching values share the same rank.
 
+`orderBy()` can take multiple ordering policies. Earlier policies have higher precedence, and later ones act as tie-breakers. This works because SlotFlow applies them in reverse registration order and relies on stable sorting: when a later policy ranks two edges equally, their previous order is preserved.
+
 Useful cascade helpers:
 
 - `move($from, $to)`

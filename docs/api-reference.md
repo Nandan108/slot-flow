@@ -224,6 +224,8 @@ Normally obtained from `Cascade::move()`, `create()`, `destroy()`, or `stepByLab
 
 The fluent builder used to attach policies to the current cascade step and optionally start the next step.
 
+`orderBy()` may be called with multiple policies. Earlier policies have higher precedence, while later ones act as tie-breakers. SlotFlow applies them in reverse registration order and relies on stable sorting so equal-ranked edges keep their previous order.
+
 ```php
 final class \Nandan108\SlotFlow\Internal\CascadeStepBuilder
 {

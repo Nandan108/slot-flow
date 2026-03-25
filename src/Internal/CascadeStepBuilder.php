@@ -38,6 +38,8 @@ final class CascadeStepBuilder
      * ordering and `$secondary` a tie-breaker within equal `$primary` groups.
      *
      * Later `orderBy()` calls add lower-level tie-breakers.
+     * This relies on stable sorting: when a later policy considers two edges equal,
+     * their previous order is preserved, so earlier policies keep higher precedence.
      *
      * @psalm-param EdgeOrderingPolicyInterface|callable(CascadeContext): list<MovementEdge> ...$policies
      *

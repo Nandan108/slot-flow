@@ -8,6 +8,7 @@ namespace Nandan108\SlotFlow;
  * An instance of this class represents the inventory state of a single SKU,
  * as a mapping of slot keys to corresponding quantities.
  *
+ * @psalm-import-type TSlotPattern from SlotSpace
  * @psalm-import-type TSlotValues from SlotSpace
  *
  * @psalm-type TQtty = int|float
@@ -34,12 +35,56 @@ final class Inventory
     }
 
     /**
+     * @param Slot|array<string|null>|string|null $slot
+     *
+     * @psalm-param Slot|TSlotPattern $slot
+     *
      * @psalm-return TQtty
      */
-    public function get(Slot $slot): int | float
+    public function get(Slot | array | string | null $slot): int | float
     {
+        $slot = $slot instanceof Slot ? $slot : $this->space->slot($slot);
+
         /** @var TQtty */
         return $this->quantities[(string) $slot] ?? 0;
+    }
+
+    /**
+     * Sum inventory quantities across one or more slots or slot patterns.
+     *
+     * Overlapping patterns are de-duplicated by slot key so each matching slot is
+     * counted at most once in the returned total.
+     *
+     * @param Slot|array<string|null>|string|null ...$slotPatterns
+     *
+     * @psalm-param Slot|TSlotPattern ...$slotPatterns
+     *
+     * @psalm-return TQtty
+     */
+    public function getSum(Slot | array | string | null ...$slotPatterns): int | float
+    {
+        /** @var array<string, Slot> $slotsByKey */
+        $slotsByKey = [];
+
+        foreach ($slotPatterns as $slotPattern) {
+            if ($slotPattern instanceof Slot) {
+                $slotsByKey[$slotPattern->key] = $slotPattern;
+                continue;
+            }
+
+            foreach ($this->space->matchPattern($slotPattern) as $slot) {
+                $slotsByKey[$slot->key] = $slot;
+            }
+        }
+
+        /** @var TQtty */
+        $sum = 0;
+        foreach ($slotsByKey as $slot) {
+            /** @psalm-suppress InvalidOperand */
+            $sum += $this->get($slot);
+        }
+
+        return $sum;
     }
 
     /**

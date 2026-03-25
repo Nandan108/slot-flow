@@ -1,3 +1,4 @@
+# SlotFlow
 
 SlotFlow is a deterministic PHP engine for modeling and executing quantity flows across an explicit multidimensional state space.
 
@@ -122,6 +123,9 @@ $space = SlotSpace::define([
     // this represents stock that will be ordered from the supplier
     // Note: could also be written ->create('sup.S.res') or ->create(['sup','S','res'])
     ->create(['loc' => 'sup', 'own' => 'S', 'stt' => 'res'])
+    // disallow backorders beyond 100
+    ->constraint(static fn (MovementEdge $edge, CascadeContext $ctx): int|float =>
+        max(0, 100 - $ctx->inventory->getSum('sup.S.res|sd')))
 );
 ```
 
@@ -130,6 +134,7 @@ This cascade encodes a common allocation policy:
 1. use purchased stock first
 1. prefer stock already in your warehouses
 1. if insufficient, create a supplier reservation (backorder)
+1. but never let open supplier backorders (`sup.S.res|sd`) exceed 100 units
 
 This makes backordering an explicit, deterministic part of the flow.
 

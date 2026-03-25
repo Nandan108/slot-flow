@@ -8,6 +8,7 @@ use Nandan108\SlotFlow\SlotSpace;
 
 /**
  * @psalm-import-type TSlotArrayPattern from SlotSpace
+ * @psalm-import-type TSlotTuplePattern from SlotSpace
  * @psalm-import-type TDimensionName from SlotSpace
  * @psalm-import-type TDimensionValue from SlotSpace
  *
@@ -35,9 +36,14 @@ interface SlotCodec
     public function alternative(): string;
 
     /**
-     * @param ?array<non-empty-string, ?string> $values
+     * Serialize a slot or slot-pattern array to the codec's canonical string form.
      *
-     * @psalm-param ?array<TDimensionName, null|''|TDimensionValue> $values
+     * List inputs are interpreted positionally in dimension order. Associative inputs
+     * are interpreted by dimension name, with missing values treated as wildcards.
+     *
+     * @param list<?string>|array<non-empty-string, ?string>|null $values
+     *
+     * @psalm-param null|TSlotTuplePattern|TSlotArrayPattern $values
      *
      * @return non-empty-string
      */

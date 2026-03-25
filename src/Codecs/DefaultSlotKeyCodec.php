@@ -6,10 +6,11 @@ namespace Nandan108\SlotFlow\Codecs;
 
 use Nandan108\SlotFlow\Contracts\SlotCodec;
 use Nandan108\SlotFlow\SlotSpace;
-use TSlotArrayPattern;
 
 /**
- * @psalm-import-type \TSlotArrayPattern from SlotSpace
+ * @psalm-import-type TSlotArrayPattern from SlotSpace
+ * @psalm-import-type TSlotTuplePattern from SlotSpace
+ * @psalm-import-type TDimensionValuePattern from SlotSpace
  * @psalm-import-type TDimensionName from SlotSpace
  * @psalm-import-type TDimensionValue from SlotSpace
  *
@@ -64,9 +65,9 @@ class DefaultSlotKeyCodec implements SlotCodec
     }
 
     /**
-     * @param ?array<non-empty-string, ?string> $values
+     * @param list<?string>|array<non-empty-string, ?string>|null $values
      *
-     * @psalm-param ?array<TDimensionName, null|''|TDimensionValue> $values
+     * @psalm-param null|TSlotTuplePattern|TSlotArrayPattern $values
      *
      * @return non-empty-string
      */
@@ -78,17 +79,28 @@ class DefaultSlotKeyCodec implements SlotCodec
         }
 
         $dimNames = $this->space->dimensionNames();
-        // throw if $value keys are not a subset of the dimension names
-        if (array_diff(array_keys($values), $dimNames)) {
+        if (array_is_list($values)) {
+            if (count($values) !== count($dimNames)) {
+                throw new \InvalidArgumentException('Slot tuple must have the same number of elements as dimensions: '.count($dimNames));
+            }
+
+            $values = array_combine($dimNames, $values);
+        } elseif (array_diff(array_keys($values), $dimNames)) {
+            // throw if $value keys are not a subset of the dimension names
             throw new \InvalidArgumentException('Value keys must be a subset of dimension names: '.implode(', ', $dimNames));
         }
 
         // make sure the values are in the same order as the dimensions
+        /** @var list<non-empty-string> $serializedValues */
+        $serializedValues = [];
+        foreach ($dimNames as $name) {
+            /** @var non-empty-string $value */
+            $value = $values[$name] ?? self::WILDCARD; // treat missing values as wildcards
+            $serializedValues[] = $value;
+        }
+
         /** @var non-empty-string $key */
-        $key = implode(self::SEPARATOR, array_map(
-            fn (string $name) => $values[$name] ?? self::WILDCARD, // treat missing values as wildcards
-            $dimNames,
-        ));
+        $key = implode(self::SEPARATOR, $serializedValues);
 
         return $key;
     }
@@ -105,7 +117,7 @@ class DefaultSlotKeyCodec implements SlotCodec
             return null;
         }
         if ($this->isWildcard($key)) {
-            /** @var \TSlotArrayPattern $dimensions */
+            /** @var TSlotArrayPattern $dimensions */
             $dimensions = array_fill_keys($this->space->dimensionNames(), $this->wildcard());
 
             return $dimensions;
@@ -118,7 +130,7 @@ class DefaultSlotKeyCodec implements SlotCodec
         }
         $dimensions = array_combine($this->space->dimensionNames(), $exploded);
 
-        /** @var \TSlotArrayPattern $dimensions */
+        /** @var TSlotArrayPattern $dimensions */
         $dimensions = array_map(fn ($v) => $this->isWildcard($v) ? self::WILDCARD : $v, $dimensions); // treat empty and null values as wildcards
 
         // throw if one of the values does not match the expected values for its dimension

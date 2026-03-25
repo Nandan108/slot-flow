@@ -48,6 +48,8 @@ final class LibraryCoverageTest extends TestCase
         self::assertTrue($codec->isWildcard(''));
         self::assertFalse($codec->isWildcard('foo'));
         self::assertSame('nil', $codec->serialize(null));
+        self::assertSame('foo.fs', $codec->serialize(['foo', 'fs']));
+        self::assertSame('foo.*', $codec->serialize(['foo', null]));
         self::assertNull($codec->deserialize(''));
         self::assertNull($codec->deserialize('nil'));
         self::assertSame(['loc' => 'foo', 'stt' => 'fs'], $codec->deserialize('foo.fs'));
@@ -72,6 +74,13 @@ final class LibraryCoverageTest extends TestCase
             self::fail('Expected invalid key format exception');
         } catch (\InvalidArgumentException $e) {
             self::assertStringContainsString('does not match the expected format', $e->getMessage());
+        }
+
+        try {
+            $codec->serialize(['foo']);
+            self::fail('Expected invalid tuple length rejection');
+        } catch (\InvalidArgumentException $e) {
+            self::assertStringContainsString('Slot tuple must have the same number of elements as dimensions', $e->getMessage());
         }
 
         try {
@@ -148,6 +157,7 @@ final class LibraryCoverageTest extends TestCase
         $copy = $inventory->copy();
         $copy->add($space->slot('foo.fs'), 2);
         self::assertSame(3, $inventory->get($space->slot('foo.fs')));
+        self::assertSame(3, $inventory->get('foo.fs'));
         self::assertSame(5, $copy->get($space->slot('foo.fs')));
 
         $inventory->addFromRows(
@@ -159,7 +169,15 @@ final class LibraryCoverageTest extends TestCase
         );
 
         self::assertSame(4, $inventory->get($space->slot('foo.fs')));
+        self::assertSame(4, $inventory->get(['loc' => 'foo', 'stt' => 'fs']));
+        self::assertSame(4, $inventory->get(['foo', 'fs']));
         self::assertSame(2, $inventory->get($space->slot('foo.sd')));
+        self::assertSame(0, $inventory->get(null));
+        self::assertSame(6, $inventory->getSum('foo.fs', 'foo.sd'));
+        self::assertSame(6, $inventory->getSum(['foo', null]));
+        self::assertSame(6, $inventory->getSum('foo.*'));
+        self::assertSame(6, $inventory->getSum('foo.fs|sd'));
+        self::assertSame(6, $inventory->getSum('foo.*', 'foo.fs'));
 
         $batch = InventoryBatch::fromRows(
             space: $space,

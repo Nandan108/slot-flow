@@ -10,7 +10,6 @@ use Nandan108\SlotFlow\Internal\SlotPattern;
 use Nandan108\SlotFlow\Rules\EdgeRule;
 use Nandan108\SlotFlow\Rules\RuleSet;
 use Nandan108\SlotFlow\Rules\SlotRule;
-use TSlotArrayPattern;
 
 /**
  * @psalm-type TDimensionName = non-empty-string the name and value of a dimension must be non-empty strings
@@ -43,6 +42,9 @@ final class SlotSpace
 
     /** @var array<TSlotKey, Slot> */
     private array $slotsByKey = [];
+
+    /** @var array<non-empty-string, list<Slot>> */
+    private array $slotsByPattern = [];
 
     private Slot $nilSlot;
 
@@ -149,6 +151,7 @@ final class SlotSpace
         }
 
         $this->slotsByKey = $slots;
+        $this->slotsByPattern = [];
 
         return $this;
     }
@@ -375,7 +378,7 @@ final class SlotSpace
                 }
             }
 
-            /** @var array<non-empty-string, ''|TDimensionValue|null> $keyOrValues */
+            /** @psalm-var TSlotArrayPattern $keyOrValues */
             $key = $this->codec->serialize($keyOrValues);
         } else {
             $key = $keyOrValues;
@@ -458,6 +461,45 @@ final class SlotSpace
         }
 
         return $result;
+    }
+
+    /**
+     * Resolve a slot pattern directly to matching slots.
+     *
+     * Exact string keys are short-circuited through the slot registry. General string
+     * patterns are cached after expansion so repeated lookups can reuse the resolved
+     * slot list without re-running pattern deserialization and matching.
+     *
+     * @psalm-param TSlotPattern $pattern
+     *
+     * @return list<Slot>
+     */
+    public function matchPattern(array | string | null $pattern): array
+    {
+        $cacheKey = is_string($pattern)
+            ? $pattern
+            : $this->codec->serialize($pattern);
+
+        $slot = $this->slotsByKey[$cacheKey] ?? null;
+        if (null !== $slot) {
+            return [$slot];
+        }
+
+        if (isset($this->slotsByPattern[$cacheKey])) {
+            return $this->slotsByPattern[$cacheKey];
+        }
+
+        $slotsByKey = [];
+        foreach ($this->expandSlotPattern($pattern) as $partial) {
+            foreach ($this->matchPartial($partial) as $slot) {
+                $slotsByKey[$slot->key] = $slot;
+            }
+        }
+
+        $slots = array_values($slotsByKey);
+        $this->slotsByPattern[$cacheKey] = $slots;
+
+        return $slots;
     }
 
     /**
