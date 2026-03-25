@@ -7,6 +7,8 @@ namespace Nandan108\SlotFlow\Results;
 use Nandan108\SlotFlow\MovementEdge;
 
 /**
+ * One applied movement with before-state snapshots for source and destination.
+ *
  * @template-covariant TQtty of int|float
  *
  * @api
@@ -26,6 +28,9 @@ final class MovementEvent
     ) {
     }
 
+    /**
+     * Return the source quantity after this movement, or null for nil sources.
+     */
     public function finalFrom(): int | float | null
     {
         if (null === $this->initialFrom) {
@@ -36,6 +41,9 @@ final class MovementEvent
         return $this->initialFrom - $this->quantity;
     }
 
+    /**
+     * Return the destination quantity after this movement, or null for nil sinks.
+     */
     public function finalTo(): int | float | null
     {
         if (null === $this->initialTo) {
@@ -47,6 +55,8 @@ final class MovementEvent
     }
 
     /**
+     * Convert this event to per-slot inventory mutations.
+     *
      * @return list<InventoryMutation>
      */
     public function mutations(): array
@@ -66,6 +76,8 @@ final class MovementEvent
     }
 
     /**
+     * Convert this event to a ledger entry.
+     *
      * @param array<string, mixed> $context
      */
     public function ledgerEntry(array $context = []): LedgerEntry

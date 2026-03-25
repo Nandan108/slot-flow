@@ -7,6 +7,8 @@ namespace Nandan108\SlotFlow\Results;
 use Nandan108\SlotFlow\Slot;
 
 /**
+ * Net quantity change for one slot.
+ *
  * @api
  */
 final class InventoryMutation

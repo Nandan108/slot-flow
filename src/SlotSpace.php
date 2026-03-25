@@ -13,6 +13,8 @@ use Nandan108\SlotFlow\Rules\RuleSet;
 use Nandan108\SlotFlow\Rules\SlotRule;
 
 /**
+ * Defines the slot space, its dimensions, the slots that exist within it, and the edges and cascades that operate on it.
+ *
  * @psalm-type TDimensionName = non-empty-string the name and value of a dimension must be non-empty strings
  * @psalm-type TDimensionValue = non-empty-string dimension values must be non-empty strings, and each dimension must have at least one value
  * @psalm-type TSlotKey = non-empty-string the serialized representation of a slot, used as a unique identifier, can be used as a slot pattern that matches exactly one slot
@@ -33,7 +35,11 @@ use Nandan108\SlotFlow\Rules\SlotRule;
  */
 final class SlotSpace
 {
-    /** @var array<TDimensionName, list<TDimensionValue>> */
+    /**
+     * @var array<non-empty-string, list<non-empty-string>>
+     *
+     * @psalm-var array<TDimensionName, list<TDimensionValue>>
+     */
     private array $dimensions = [];
 
     /** @var list<TDimensionName> */
@@ -41,7 +47,11 @@ final class SlotSpace
 
     public SlotCodec $codec;
 
-    /** @var array<TSlotKey, Slot> */
+    /**
+     * @var array<non-empty-string, Slot>
+     *
+     * @psalm-var array<TSlotKey, Slot>
+     */
     private array $slotsByKey = [];
 
     /** @var array<non-empty-string, list<Slot>> */
@@ -55,12 +65,16 @@ final class SlotSpace
     /**
      * Per slot key => the list of rules needed to generate the valid edges from that slot to other slots.
      *
-     * @var array<TSlotKey, EdgeRule[]>
+     * @var array<non-empty-string, list<EdgeRule>>
+     *
+     * @psalm-var array<TSlotKey, list<EdgeRule>>
      */
     private array $edgeRulesByOriginSlot = [];
 
     /**
-     * @var array<TSlotKey, array<TSlotKey, MovementEdge>>
+     * @var array<non-empty-string, array<non-empty-string, MovementEdge>>
+     *
+     * @psalm-var array<TSlotKey, array<TSlotKey, MovementEdge>>
      */
     private array $outgoingEdgeByOriginSlot = [];
 

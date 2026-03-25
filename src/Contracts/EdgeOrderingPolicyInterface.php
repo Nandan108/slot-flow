@@ -8,11 +8,15 @@ use Nandan108\SlotFlow\MovementEdge;
 use Nandan108\SlotFlow\Runtime\CascadeContext;
 
 /**
+ * Reorders candidate edges for one cascade step.
+ *
  * @api
  */
 interface EdgeOrderingPolicyInterface
 {
     /**
+     * Return the candidate edges in preferred execution order.
+     *
      * @return list<MovementEdge>
      */
     public function orderEdges(CascadeContext $ctx): array;

@@ -1,4 +1,8 @@
 # SlotFlow
+![CI](https://github.com/nandan108/slot-flow/actions/workflows/ci.yml/badge.svg)
+![Coverage](https://codecov.io/gh/nandan108/slot-flow/branch/main/graph/badge.svg)
+![Style](https://img.shields.io/badge/style-php--cs--fixer-brightgreen)
+![Packagist](https://img.shields.io/packagist/v/nandan108/slot-flow)
 
 SlotFlow is a deterministic PHP engine for modeling and executing quantity flows across an explicit multidimensional state space.
 
@@ -21,7 +25,7 @@ When you request a quantity movement, SlotFlow:
 
 SlotFlow is intentionally not an ERP, fulfillment system, or workflow framework. It is the lower-level engine those systems can build on.
 
-## Core Model
+## Core Concepts
 
 - A `Slot` is one concrete state such as `wh1.FP.fs`.
   - The special `nil` slot represents outside-of-space flow: both source, sink, and effectively `/dev/null`.
@@ -158,11 +162,35 @@ The main result shapes are:
 
 - [Guide](docs/guide.md): step-by-step usage, patterns, ingestion, execution, and batch processing
 - [Commerce Example](docs/commerce-example.md): a fuller e-commerce flow model
-- [API Reference](docs/api-reference.md): full public signatures grouped by area
-    - [SlotSpace](docs/api-reference.md#slotspace-api)
-    - [Slot And Edge Rules](docs/api-reference.md#slot-and-edge-rules-api)
-    - [Inventory](docs/api-reference.md#inventory-api)
-    - [Cascade](docs/api-reference.md#cascade-api)
-    - [Execution](docs/api-reference.md#execution-api)
-    - [Policy](docs/api-reference.md#policy-api)
-    - [Batch](docs/api-reference.md#batch-api)
+- Generated API docs: https://nandan108.github.io/slot-flow
+
+## Origin
+
+SlotFlow originates from a real-world inventory system I developed in 2017 for a production e-commerce platform.
+
+That system handled:
+
+- multi-location stock allocation
+- inbound stock and delivery promise computation
+- reservation and booking flows
+- partial shipment tracking
+- movement logging (ledger)
+
+Over time, the limitations of a tightly coupled implementation became clear:
+movement rules, state representation, and execution logic were all intertwined.
+
+SlotFlow is an extraction of its core ideas as a **generic, composable flow engine**.
+
+For historical reference, the original implementation is preserved here:
+👉 [`docs/history/original-MPB-InventoryEngine.php`](docs/history/original-MPB-InventoryEngine.php)
+
+## Quality
+
+- 100% automated test coverage
+- Psalm level 1 clean
+- CI runs PHPUnit on PHP 8.3, 8.4, and 8.5
+- Generated API docs published from source via phpDocumentor
+
+## License
+
+MIT. See [LICENSE](LICENSE).

@@ -7,6 +7,8 @@ namespace Nandan108\SlotFlow\Rules;
 use Nandan108\SlotFlow\SlotSpace;
 
 /**
+ * Declarative include/exclude rule for shaping the valid slot space.
+ *
  * @psalm-import-type TSlotPattern from SlotSpace
  *
  * @api

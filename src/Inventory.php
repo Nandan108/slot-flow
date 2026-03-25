@@ -37,6 +37,8 @@ final class Inventory
     }
 
     /**
+     * Get the quantity currently stored at one slot.
+     *
      * @param Slot|array<string|null>|string|null $slot
      *
      * @psalm-param Slot|TSlotPattern $slot
@@ -131,6 +133,8 @@ final class Inventory
     }
 
     /**
+     * Return all non-zero stored quantities keyed by slot key.
+     *
      * @return array<string, int|float>
      *
      * @psalm-return array<string, TQtty>
@@ -141,6 +145,8 @@ final class Inventory
     }
 
     /**
+     * Return per-slot attributes remembered during ingestion or tuple loading.
+     *
      * @return array<string, mixed>
      */
     public function slotAttributes(Slot $slot): array
@@ -148,11 +154,17 @@ final class Inventory
         return $this->slotAttributes[$slot->key] ?? [];
     }
 
+    /**
+     * Read one remembered slot attribute with an optional default.
+     */
     public function slotAttribute(Slot $slot, string $name, mixed $default = null): mixed
     {
         return $this->slotAttributes($slot)[$name] ?? $default;
     }
 
+    /**
+     * Clone the inventory state and remembered slot attributes.
+     */
     public function copy(): self
     {
         $clone = new self($this->space);
@@ -163,10 +175,11 @@ final class Inventory
     }
 
     /**
+     * Add quantities from rows using a resolver that yields inventory tuples.
+     *
      * @psalm-template TRow
      *
      * @param iterable $rows
-     * @param \Closure $resolver closure to resolve slot dimensions and quantity from a row
      *
      * @psalm-param iterable<TRow> $rows
      * @psalm-param (\Closure(TRow): list<TInventoryTuple>|\Closure(TRow, SlotSpace): list<TInventoryTuple>) $resolver
@@ -187,10 +200,11 @@ final class Inventory
     }
 
     /**
+     * Build a new inventory from rows using a tuple resolver.
+     *
      * @psalm-template TRow
      *
      * @param iterable $rows
-     * @param \Closure $resolver closure to resolve slot dimensions and quantity from a row
      *
      * @psalm-param iterable<TRow> $rows
      * @psalm-param (\Closure(TRow): list<TInventoryTuple>|\Closure(TRow, SlotSpace): list<TInventoryTuple>) $resolver

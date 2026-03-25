@@ -21,7 +21,11 @@ class SlotFlowLogicException extends \LogicException implements SlotFlowExceptio
         parent::__construct($message, $code, $previous);
     }
 
-    /** @return array<string, mixed> */
+    /**
+     * Return structured details about the invalid state that caused the exception.
+     *
+     * @return array<string, mixed>
+     */
     #[\Override]
     public function debugContext(): array
     {

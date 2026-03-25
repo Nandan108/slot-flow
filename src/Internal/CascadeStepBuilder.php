@@ -15,6 +15,8 @@ use Nandan108\SlotFlow\Runtime\CascadeContext;
 use Nandan108\SlotFlow\SlotSpace;
 
 /**
+ * Fluent builder for configuring the most recently added cascade step.
+ *
  * @psalm-import-type TSlotPattern from SlotSpace
  *
  * @api

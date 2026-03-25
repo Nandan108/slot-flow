@@ -7,6 +7,8 @@ namespace Nandan108\SlotFlow\Batch;
 use Nandan108\SlotFlow\Slot;
 
 /**
+ * Inventory mutation paired with the batch subject it belongs to.
+ *
  * @template TSubject
  *
  * @api

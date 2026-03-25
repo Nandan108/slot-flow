@@ -7,6 +7,8 @@ namespace Nandan108\SlotFlow\Batch;
 use Nandan108\SlotFlow\MovementEdge;
 
 /**
+ * Ledger entry paired with the batch subject it belongs to.
+ *
  * @template TSubject
  *
  * @api

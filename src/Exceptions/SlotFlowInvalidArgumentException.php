@@ -21,7 +21,11 @@ class SlotFlowInvalidArgumentException extends \InvalidArgumentException impleme
         parent::__construct($message, $code, $previous);
     }
 
-    /** @return array<string, mixed> */
+    /**
+     * Return structured details about the invalid arguments that caused the exception.
+     *
+     * @return array<string, mixed>
+     */
     #[\Override]
     public function debugContext(): array
     {

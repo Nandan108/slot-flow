@@ -7,6 +7,8 @@ namespace Nandan108\SlotFlow\Results;
 use Nandan108\SlotFlow\MovementEdge;
 
 /**
+ * Ledger-friendly representation of one movement event.
+ *
  * @api
  */
 final class LedgerEntry

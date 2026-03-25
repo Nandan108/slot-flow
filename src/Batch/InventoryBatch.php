@@ -11,6 +11,8 @@ use Nandan108\SlotFlow\Slot;
 use Nandan108\SlotFlow\SlotSpace;
 
 /**
+ * Group of per-subject inventories to be processed by the batch engine.
+ *
  * @template TSubject
  *
  * @psalm-import-type TSlotPattern from SlotSpace
@@ -96,6 +98,8 @@ final class InventoryBatch
     }
 
     /**
+     * Return the batch items in subject order.
+     *
      * @return array<BatchItem>
      *
      * @psalm-return array<BatchItem<TSubject>>
@@ -121,6 +125,8 @@ final class InventoryBatch
     }
 
     /**
+     * Flatten all item results to batch-scoped inventory mutations.
+     *
      * @return list<BatchInventoryMutation<TSubject>>
      */
     public function mutations(): array
@@ -146,6 +152,8 @@ final class InventoryBatch
     }
 
     /**
+     * Flatten all item results to batch-scoped ledger entries.
+     *
      * @param array<string, mixed> $context
      *
      * @return list<BatchLedgerEntry<TSubject>>

@@ -9,6 +9,8 @@ use Nandan108\SlotFlow\Exceptions\SlotFlowInvalidArgumentException;
 use Nandan108\SlotFlow\SlotSpace;
 
 /**
+ * Built-in dot-separated codec with wildcard and alternative support.
+ *
  * @psalm-import-type TSlotArrayPattern from SlotSpace
  * @psalm-import-type TSlotTuplePattern from SlotSpace
  * @psalm-import-type TDimensionValuePattern from SlotSpace

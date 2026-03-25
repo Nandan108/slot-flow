@@ -8,6 +8,8 @@ use Nandan108\SlotFlow\Exceptions\SlotFlowInvalidArgumentException;
 use Nandan108\SlotFlow\SlotSpace;
 
 /**
+ * Defines how slots are serialized, deserialized, and pattern-matched.
+ *
  * @psalm-import-type TSlotArrayPattern from SlotSpace
  * @psalm-import-type TSlotTuplePattern from SlotSpace
  * @psalm-import-type TDimensionName from SlotSpace
@@ -17,23 +19,43 @@ use Nandan108\SlotFlow\SlotSpace;
  */
 interface SlotCodec
 {
+    /**
+     * Bind the codec instance to one slot space.
+     */
     /** @psalm-suppress PossiblyUnusedMethod */
     public function __construct(SlotSpace $space);
 
+    /**
+     * Return true when the given value should be treated as a match-all wildcard.
+     */
     public function isWildcard(?string $value): bool;
 
-    /** @return non-empty-string */
+    /**
+     * Return the canonical wildcard token used by this codec.
+     *
+     * @return non-empty-string
+     */
     public function wildcard(): string;
 
     /**
+     * Return the reserved key for the special nil source/sink slot.
+     *
      * @return non-empty-string a special key representing out-of-space source/sink slot
      */
     public function nilKey(): string;
 
-    /** @return non-empty-string */
+    /**
+     * Return the separator used between serialized dimension values.
+     *
+     * @return non-empty-string
+     */
     public function dimensionSeparator(): string;
 
-    /** @return non-empty-string */
+    /**
+     * Return the token used to express value alternatives inside one dimension.
+     *
+     * @return non-empty-string
+     */
     public function alternative(): string;
 
     /**
@@ -51,6 +73,8 @@ interface SlotCodec
     public function serialize(?array $values): string;
 
     /**
+     * Parse a serialized slot key or pattern into its associative dimension form.
+     *
      * @return ?array<non-empty-string, ?non-empty-string>
      *
      * @psalm-return ?TSlotArrayPattern
@@ -60,6 +84,8 @@ interface SlotCodec
     public function deserialize(?string $key): ?array;
 
     /**
+     * Validate that the slot-space dimension values are compatible with the codec syntax.
+     *
      * @param array<non-empty-string, list<non-empty-string>> $dimensions
      */
     public function initialDimensionValueValidation(array $dimensions): void;
@@ -84,7 +110,9 @@ interface SlotCodec
     public function validateDimensionValue(string $dimension, ?string $value, bool $allowWildcards): void;
 
     /**
-     * For a single dimension, find all values matching the given pattern, where the pattern can be:
+     * For one dimension, expand a value pattern to all matching concrete values.
+     *
+     * The pattern can be:
      * - a specific value, which matches only that value
      * - a WILDCARD, which matches all values for that dimension
      * - a string containing one or more WILDCARDs, which matches any value that fits the pattern

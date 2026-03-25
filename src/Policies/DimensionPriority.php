@@ -10,6 +10,8 @@ use Nandan108\SlotFlow\Runtime\CascadeContext;
 use Nandan108\SlotFlow\SlotSpace;
 
 /**
+ * Orders edges by configured priority tiers on source-slot dimensions.
+ *
  * @api
  */
 final class DimensionPriority implements EdgeOrderingPolicyInterface

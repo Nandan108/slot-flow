@@ -7,6 +7,8 @@ namespace Nandan108\SlotFlow\Rules;
 use Nandan108\SlotFlow\SlotSpace;
 
 /**
+ * Declarative allow/deny rule for edges between slot patterns.
+ *
  * @psalm-import-type TSlotPattern from SlotSpace
  *
  * @api

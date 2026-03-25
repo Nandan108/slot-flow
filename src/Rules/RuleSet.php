@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Nandan108\SlotFlow\Rules;
 
 /**
+ * Composable container for slot and edge rules.
+ *
  * @template TRuleType of SlotRule|EdgeRule
  *
  * @api

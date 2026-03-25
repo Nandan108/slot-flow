@@ -8,11 +8,15 @@ use Nandan108\SlotFlow\Runtime\AllocationDecision;
 use Nandan108\SlotFlow\Runtime\CascadeContext;
 
 /**
+ * Chooses explicit edge allocations for one cascade step.
+ *
  * @api
  */
 interface AllocationPolicyInterface
 {
     /**
+     * Return allocation decisions for the current step context.
+     *
      * @return list<AllocationDecision>
      */
     public function allocate(CascadeContext $ctx): array;

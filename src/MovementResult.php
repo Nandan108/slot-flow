@@ -9,6 +9,8 @@ use Nandan108\SlotFlow\Results\LedgerEntry;
 use Nandan108\SlotFlow\Results\MovementEvent;
 
 /**
+ * Immutable summary of one cascade execution.
+ *
  * @template-covariant TQtty of int|float
  *
  * @api
@@ -27,6 +29,9 @@ final class MovementResult
     ) {
     }
 
+    /**
+     * Return true when the requested quantity was fully satisfied.
+     */
     public function isComplete(): bool
     {
         return 0 === $this->remaining;
@@ -83,6 +88,8 @@ final class MovementResult
     }
 
     /**
+     * Convert each movement event to a ledger entry.
+     *
      * @param array<string, mixed> $context
      *
      * @return list<LedgerEntry>

@@ -1,5 +1,9 @@
 # SlotFlow Guide
 
+Generated API docs: https://nandan108.github.io/slot-flow
+
+To build them locally, run `composer phpdoc` and open `build/phpdoc/index.html`.
+
 ## What SlotFlow Models
 
 SlotFlow models quantity movement through a finite graph of slots.
@@ -46,8 +50,6 @@ The engine does not care. It only needs a finite space and valid transitions.
 
 `SlotSpace::define()` creates the full cartesian product of dimensions. You then shape it with slot rules and edge rules.
 
-API reference: [SlotSpace API](api-reference.md#slotspace-api), [Slot And Edge Rules API](api-reference.md#slot-and-edge-rules-api)
-
 ```php
 use Nandan108\SlotFlow\Rules\EdgeRule;
 use Nandan108\SlotFlow\Rules\RuleSet;
@@ -58,10 +60,10 @@ $space = SlotSpace::define([
     'loc' => ['sup', 'wh1', 'wh2'],
     'own' => ['CS', 'CP', 'FP'],
     'stt' => ['fs', 'res', 'sd', 'ret', 'def'],
-])->slotRules(RuleSet::from(
+])->slotRules([
     SlotRule::allow('*'),
     SlotRule::allow('wh2.*.*')->meta(['food-storage' => true]),
-))->edgeRules([
+])->edgeRules([
     EdgeRule::disconnect(['own' => 'C*'], ['own' => 'FP']),
     EdgeRule::allow(['own' => 'C*', 'stt' => 'ret'], ['own' => 'CP', 'stt' => 'fs']),
 ]);
@@ -73,9 +75,14 @@ Key points:
 - edge rules decide which movements are allowed between those slots
 - both slot rules and edge rules can carry attributes
 
-## 2. Address Slots And Patterns
+Slot rules behave a bit like firewall rules:
 
-API reference: [SlotSpace API](api-reference.md#slotspace-api), [Inventory API](api-reference.md#inventory-api)
+- if the first rule is an allow rule, the usable space starts empty and matching slots are added
+- if the first rule is a deny rule, the usable space starts full and matching slots are removed
+- if no slot rules are given, the full cartesian slot space is kept
+- later rules are applied in order, so they can override earlier ones
+
+## 2. Address Slots And Patterns
 
 You can refer to slots in a few ways:
 
@@ -112,8 +119,6 @@ $allWarehouseForsale = $space->matchPartial(['loc' => 'wh*', 'stt' => 'fs']);
 ## 3. Build Inventories
 
 `Inventory` represents the quantity state of one subject.
-
-API reference: [Inventory API](api-reference.md#inventory-api)
 
 ```php
 use Nandan108\SlotFlow\Inventory;
@@ -154,8 +159,6 @@ This distinction matters in generic modeling:
 ## 4. Define Cascades
 
 A cascade is a sequence of movement steps. Each step can define:
-
-API reference: [Cascade API](api-reference.md#cascade-api), [Policy API](api-reference.md#policy-api)
 
 - a source pattern
 - a destination pattern
@@ -260,8 +263,6 @@ In practice:
 
 Single-subject execution:
 
-API reference: [Execution API](api-reference.md#execution-api)
-
 ```php
 use Nandan108\SlotFlow\MovementEngine;
 
@@ -303,8 +304,6 @@ SlotFlow treats invalid patterns, definitions, and lookups as modeling/API error
 
 Use `InventoryBatch` when you want to execute the same cascade for many subjects.
 
-API reference: [Batch API](api-reference.md#batch-api)
-
 ```php
 use Nandan108\SlotFlow\Batch\BatchMovementEngine;
 use Nandan108\SlotFlow\Batch\InventoryBatch;
@@ -345,8 +344,6 @@ That is useful not just for catalog variants, but for any domain where the moved
 ## 7. Understand The Result
 
 `MovementResult` contains the full event history for one execution.
-
-API reference: [Execution API](api-reference.md#execution-api)
 
 ```php
 $result->events;

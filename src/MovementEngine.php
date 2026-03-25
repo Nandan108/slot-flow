@@ -14,6 +14,8 @@ use Nandan108\SlotFlow\Runtime\AllocationDecision;
 use Nandan108\SlotFlow\Runtime\CascadeContext;
 
 /**
+ * Executes cascades against inventory with deterministic greedy semantics.
+ *
  * @template TQtty of int|float
  *
  * @psalm-import-type TSlotPattern from SlotSpace
@@ -25,6 +27,8 @@ use Nandan108\SlotFlow\Runtime\CascadeContext;
 final class MovementEngine
 {
     /**
+     * Execute one cascade for one inventory subject.
+     *
      * @param array<mixed>               $appContext
      * @param array<string, scalar|null> $params
      *

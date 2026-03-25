@@ -10,6 +10,8 @@ use Nandan108\SlotFlow\MovementEdge;
 use Nandan108\SlotFlow\Runtime\CascadeContext;
 
 /**
+ * Filters or orders edges by a caller-provided distance metric.
+ *
  * @api
  */
 final class DistancePolicy implements EdgeFilterPolicyInterface, EdgeOrderingPolicyInterface

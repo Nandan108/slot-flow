@@ -10,6 +10,8 @@ use Nandan108\SlotFlow\Slot;
 use Nandan108\SlotFlow\SlotSpace;
 
 /**
+ * Runtime context object passed to policies during one cascade step.
+ *
  * @api
  */
 final class CascadeContext
@@ -29,6 +31,8 @@ final class CascadeContext
     }
 
     /**
+     * Return remembered attributes for one slot in the current inventory.
+     *
      * @return array<string, mixed>
      */
     public function slotAttributes(Slot $slot): array
@@ -36,6 +40,9 @@ final class CascadeContext
         return $this->inventory->slotAttributes($slot);
     }
 
+    /**
+     * Read one remembered slot attribute with an optional default.
+     */
     public function slotAttribute(Slot $slot, string $name, mixed $default = null): mixed
     {
         return $this->inventory->slotAttribute($slot, $name, $default);

@@ -11,6 +11,10 @@ namespace Nandan108\SlotFlow\Exceptions;
  */
 interface SlotFlowExceptionInterface extends \Throwable
 {
-    /** @return array<string, mixed> */
+    /**
+     * Return structured details about the failing input or state, when available.
+     *
+     * @return array<string, mixed>
+     */
     public function debugContext(): array;
 }

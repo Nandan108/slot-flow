@@ -9,6 +9,8 @@ use Nandan108\SlotFlow\MovementEngine;
 use Nandan108\SlotFlow\SlotSpace;
 
 /**
+ * Executes one cascade across all items in an inventory batch.
+ *
  * @api
  */
 final class BatchMovementEngine

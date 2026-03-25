@@ -9,6 +9,8 @@ use Nandan108\SlotFlow\Internal\CascadeStep;
 use Nandan108\SlotFlow\Internal\CascadeStepBuilder;
 
 /**
+ * Named ordered set of movement steps that can be executed by the engine.
+ *
  * @psalm-import-type TSlotPattern from SlotSpace
  *
  * @api
@@ -25,6 +27,9 @@ final class Cascade
         $this->name = $name;
     }
 
+    /**
+     * Build a cascade fluently in one call.
+     */
     public static function define(string $name, \Closure $builder): self
     {
         $cascade = new self($name);
@@ -33,12 +38,17 @@ final class Cascade
         return $cascade;
     }
 
+    /**
+     * Return the cascade name.
+     */
     public function name(): string
     {
         return $this->name;
     }
 
     /**
+     * Return the compiled list of cascade steps.
+     *
      * @return list<CascadeStep>
      */
     public function steps(): array
@@ -46,6 +56,9 @@ final class Cascade
         return $this->steps;
     }
 
+    /**
+     * Conditionally reverse step order, optionally flipping edge direction too.
+     */
     public function reverseIf(bool $condition, bool $flipEdges = true): self
     {
         if (!$condition) {
@@ -78,6 +91,8 @@ final class Cascade
     }
 
     /**
+     * Add a movement step from one slot pattern to another.
+     *
      * @psalm-param TSlotPattern $from
      * @psalm-param TSlotPattern $to
      */
@@ -89,6 +104,8 @@ final class Cascade
     }
 
     /**
+     * Add a creation step from nil into matching destination slots.
+     *
      * @psalm-param TSlotPattern $to
      */
     public function create(string | array | null $to): CascadeStepBuilder
@@ -99,6 +116,8 @@ final class Cascade
     }
 
     /**
+     * Add a destruction step from matching source slots into nil.
+     *
      * @psalm-param TSlotPattern $from
      */
     public function destroy(string | array | null $from): CascadeStepBuilder

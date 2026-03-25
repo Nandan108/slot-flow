@@ -7,6 +7,8 @@ namespace Nandan108\SlotFlow\Runtime;
 use Nandan108\SlotFlow\MovementEdge;
 
 /**
+ * One explicit quantity allocation to a specific edge.
+ *
  * @api
  */
 final class AllocationDecision

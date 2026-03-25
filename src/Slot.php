@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Nandan108\SlotFlow;
 
 /**
+ * One concrete slot in a slot space, or the special `nil` boundary slot.
+ *
  * @api
  */
 final class Slot
@@ -22,6 +24,9 @@ final class Slot
     ) {
     }
 
+    /**
+     * Return true when this is the special out-of-space nil slot.
+     */
     public function isNil(): bool
     {
         return null === $this->dimensions;
@@ -43,6 +48,9 @@ final class Slot
         return $this->dimensions[$name] ?? null;
     }
 
+    /**
+     * Compare two slots by their serialized key.
+     */
     public function equals(Slot $other): bool
     {
         return $this->key === $other->key;
@@ -61,11 +69,14 @@ final class Slot
     }
 
     /**
+     * Return slots produced by overriding dimensions on this slot.
+     *
+     * May return an empty array if the overridden slot does not exist. If this
+     * is the nil slot, the overrides are treated as a partial pattern match.
+     *
      * @param array<non-empty-string, non-empty-string> $overrides
      *
-     * @return array<Slot> an array containing the same slot, with values overriden by the override.
-     *                     May return an empty array if the result after override is invalid (i.e. doesn't exist in the slot space).
-     *                     If this is a nil slot, returns an array of all slots matching the overrides
+     * @return array<Slot>
      */
     public function with(?array $overrides): array
     {
@@ -82,13 +93,21 @@ final class Slot
         return $slot ? [$this->space->slot($newDimensions)] : [];
     }
 
-    /** @return array<non-empty-string, MovementEdge> */
+    /**
+     * Return the currently valid outgoing edges from this slot.
+     *
+     * @return array<non-empty-string, MovementEdge>
+     */
     public function outgoingEdges(): array
     {
         return $this->space->getEdgesFrom($this);
     }
 
-    /** @return non-empty-string */
+    /**
+     * Return the serialized slot key.
+     *
+     * @return non-empty-string
+     */
     public function __toString(): string
     {
         return $this->key;
