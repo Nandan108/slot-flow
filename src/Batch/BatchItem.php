@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Nandan108\SlotFlow\Batch;
 
+use Nandan108\SlotFlow\Exceptions\SlotFlowLogicException;
 use Nandan108\SlotFlow\Inventory;
 use Nandan108\SlotFlow\MovementResult;
 
@@ -35,7 +36,10 @@ final class BatchItem
     public function setMovementResult(MovementResult $result): void
     {
         if (null !== $this->result) {
-            throw new \LogicException('Movement result already set');
+            throw new SlotFlowLogicException(
+                'Movement result already set',
+                ['has_existing_result' => true],
+            );
         }
 
         $this->result = $result;

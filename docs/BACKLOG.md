@@ -2,7 +2,6 @@
 
 # TODO
 - [009] Set up automated API docs with phpDocumentor
-- [012] Refactor library exceptions into a unified hierarchy
 
 # DONE
 - [005] Fix all psalm errors before anything else!
@@ -14,3 +13,4 @@
 - [007] Define and document the outgress pattern: MovementResults -> InventoryMutations + LedgerEntry
 - [011] Show an inventory constraint example in the docs/README
 - [010] Update docs around stable sort requirements
+- [012] Refactor library exceptions into a unified hierarchy

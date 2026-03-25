@@ -2,6 +2,14 @@
 
 This document covers the current public API surface of SlotFlow. Signatures below are taken from the codebase as it exists today.
 
+## Exceptions
+
+All exceptions thrown by SlotFlow implement `Nandan108\SlotFlow\Exceptions\SlotFlowExceptionInterface`.
+
+Invalid inputs and definitions throw `SlotFlowInvalidArgumentException`; invalid object state throws `SlotFlowLogicException`.
+
+These still extend PHP's standard `\InvalidArgumentException` and `\LogicException`, and expose `debugContext(): array` for structured diagnostics.
+
 ## SlotSpace API
 
 ### `SlotSpace`

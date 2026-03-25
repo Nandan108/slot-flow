@@ -20,8 +20,6 @@ final class EdgeRule
      * @psalm-param TSlotPattern $from
      * @psalm-param TSlotPattern $to
      *
-     * @throws \InvalidArgumentException
-     *
      * @psalm-suppress TypeDoesNotContainType
      */
     public function __construct(

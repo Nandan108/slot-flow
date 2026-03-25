@@ -294,6 +294,9 @@ When using parameterized cascades, `params` is also where placeholder substituti
 
 This same `params` mechanism works when `cascade` is a registered cascade name, which makes named parameterized cascades a good fit for application-level flow templates.
 
+**Exceptions**
+SlotFlow treats invalid patterns, definitions, and lookups as modeling/API errors. All library-thrown exceptions implement `Nandan108\SlotFlow\Exceptions\SlotFlowExceptionInterface`, so callers can catch that interface for library-wide handling or the SPL-compatible `SlotFlowInvalidArgumentException` and `SlotFlowLogicException` subclasses for narrower handling. When available, `debugContext(): array` provides structured diagnostics about the failing input or state.
+
 ## 6. Batch Execution
 
 Use `InventoryBatch` when you want to execute the same cascade for many subjects.

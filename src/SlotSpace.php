@@ -6,6 +6,7 @@ namespace Nandan108\SlotFlow;
 
 use Nandan108\SlotFlow\Codecs\DefaultSlotKeyCodec;
 use Nandan108\SlotFlow\Contracts\SlotCodec;
+use Nandan108\SlotFlow\Exceptions\SlotFlowInvalidArgumentException;
 use Nandan108\SlotFlow\Internal\SlotPattern;
 use Nandan108\SlotFlow\Rules\EdgeRule;
 use Nandan108\SlotFlow\Rules\RuleSet;
@@ -255,7 +256,10 @@ final class SlotSpace
     public function dimensionValues(string $dimension): array
     {
         return $this->dimensions[$dimension] ??
-            throw new \InvalidArgumentException("Unknown dimension: $dimension");
+            throw new SlotFlowInvalidArgumentException(
+                "Unknown dimension: $dimension",
+                ['dimension' => $dimension, 'known_dimensions' => $this->dimensionNames],
+            );
     }
 
     /**
@@ -263,16 +267,22 @@ final class SlotSpace
      *
      * @psalm-param array<string> $names
      *
-     * @throws \InvalidArgumentException
+     * @throws SlotFlowInvalidArgumentException
      */
     public function validateKnownDimensionNames(array $names): void
     {
         if ($extra = array_diff($names, $this->dimensionNames)) {
             if (1 === count($extra)) {
-                throw new \InvalidArgumentException('Unknown dimension: '.reset($extra));
+                throw new SlotFlowInvalidArgumentException(
+                    'Unknown dimension: '.reset($extra),
+                    ['dimension' => reset($extra), 'known_dimensions' => $this->dimensionNames],
+                );
             }
 
-            throw new \InvalidArgumentException('Invalid slot values: unknown dimensions: ['.implode(', ', $extra).']');
+            throw new SlotFlowInvalidArgumentException(
+                'Invalid slot values: unknown dimensions: ['.implode(', ', $extra).']',
+                ['unknown_dimensions' => array_values($extra), 'known_dimensions' => $this->dimensionNames],
+            );
         }
     }
 
@@ -287,7 +297,7 @@ final class SlotSpace
      *
      * @psalm-return list<TSlotPartial>|list<null>
      *
-     * @throws \InvalidArgumentException if the pattern is invalid or contains unknown dimensions or values
+     * @throws SlotFlowInvalidArgumentException if the pattern is invalid or contains unknown dimensions or values
      */
     public function expandSlotPattern(string | array | null $pattern): array
     {
@@ -298,7 +308,10 @@ final class SlotSpace
             }
         } elseif (array_is_list($pattern)) {
             if (count($pattern) !== count($this->dimensionNames)) {
-                throw new \InvalidArgumentException('Slot pattern tuple must have the same number of elements as dimensions: '.count($this->dimensionNames));
+                throw new SlotFlowInvalidArgumentException(
+                    'Slot pattern tuple must have the same number of elements as dimensions: '.count($this->dimensionNames),
+                    ['expected_dimension_count' => count($this->dimensionNames), 'received_count' => count($pattern)],
+                );
             }
             $pattern = array_combine($this->dimensionNames, $pattern);
         } else {
@@ -373,8 +386,15 @@ final class SlotSpace
                     // include the missing and extra keys in the error message for easier debugging
                     $gotMissing = $missing ? 'missing dimensions: ['.implode(', ', $missing).']' : '';
                     $gotExtra = $extra ? 'unknown dimensions: ['.implode(', ', $extra).']' : '';
-                    throw new \InvalidArgumentException('Invalid slot values: got '.
-                        implode(', ', $this->dimensionNames).implode(', ', array_filter([$gotMissing, $gotExtra])));
+                    throw new SlotFlowInvalidArgumentException(
+                        'Invalid slot values: got '.implode(', ', $this->dimensionNames).implode(', ', array_filter([$gotMissing, $gotExtra])),
+                        [
+                            'expected_dimensions' => $this->dimensionNames,
+                            'received_dimensions' => $keys,
+                            'missing_dimensions'  => array_values($missing),
+                            'unknown_dimensions'  => array_values($extra),
+                        ],
+                    );
                 }
             }
 
@@ -407,7 +427,7 @@ final class SlotSpace
      *
      * @psalm-param TSlotPattern $keyOrValues
      *
-     * @throws \InvalidArgumentException if the resulting key does not correspond to any defined slot
+     * @throws SlotFlowInvalidArgumentException if the resulting key does not correspond to any defined slot
      */
     public function slot(array | string | null $keyOrValues): Slot
     {
@@ -415,7 +435,10 @@ final class SlotSpace
 
         if (null === $slot) {
             /** @psalm-suppress RiskyTruthyFalsyComparison */
-            throw new \InvalidArgumentException('Unknown slot: '.(json_encode($keyOrValues) ?: 'unrepresentable value'));
+            throw new SlotFlowInvalidArgumentException(
+                'Unknown slot: '.(json_encode($keyOrValues) ?: 'unrepresentable value'),
+                ['slot' => $keyOrValues],
+            );
         }
 
         return $slot;
@@ -572,7 +595,10 @@ final class SlotSpace
     public function cascade(string $name, \Closure | array $builder): self
     {
         if (isset($this->cascades[$name])) {
-            throw new \InvalidArgumentException("Cascade '$name' already defined");
+            throw new SlotFlowInvalidArgumentException(
+                "Cascade '$name' already defined",
+                ['cascade' => $name],
+            );
         }
 
         if (is_array($builder)) {
@@ -603,7 +629,10 @@ final class SlotSpace
     public function getCascade(string $name): Cascade
     {
         if (!isset($this->cascades[$name])) {
-            throw new \InvalidArgumentException("Cascade '$name' not defined");
+            throw new SlotFlowInvalidArgumentException(
+                "Cascade '$name' not defined",
+                ['cascade' => $name],
+            );
         }
 
         return $this->cascades[$name];

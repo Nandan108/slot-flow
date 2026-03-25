@@ -14,6 +14,9 @@ use Nandan108\SlotFlow\Contracts\AllocationPolicyInterface;
 use Nandan108\SlotFlow\Contracts\EdgeFilterPolicyInterface;
 use Nandan108\SlotFlow\Contracts\EdgeOrderingPolicyInterface;
 use Nandan108\SlotFlow\Contracts\QttyConstraintPolicyInterface;
+use Nandan108\SlotFlow\Exceptions\SlotFlowExceptionInterface;
+use Nandan108\SlotFlow\Exceptions\SlotFlowInvalidArgumentException;
+use Nandan108\SlotFlow\Exceptions\SlotFlowLogicException;
 use Nandan108\SlotFlow\Internal\SlotPattern;
 use Nandan108\SlotFlow\Inventory;
 use Nandan108\SlotFlow\MovementEdge;
@@ -56,7 +59,7 @@ final class LibraryCoverageTest extends TestCase
         self::assertSame(['bar'], $codec->matchDimensionValues('loc', 'bar'));
         self::assertSame(['foo', 'bar'], $codec->matchDimensionValues('loc', '*'));
 
-        $this->expectException(\InvalidArgumentException::class);
+        $this->expectException(SlotFlowInvalidArgumentException::class);
         $this->expectExceptionMessage('Value keys must be a subset of dimension names');
         $codec->serialize(['bad' => 'x']);
     }
@@ -72,35 +75,38 @@ final class LibraryCoverageTest extends TestCase
         try {
             $codec->deserialize('foo');
             self::fail('Expected invalid key format exception');
-        } catch (\InvalidArgumentException $e) {
+        } catch (SlotFlowInvalidArgumentException $e) {
+            self::assertInstanceOf(SlotFlowExceptionInterface::class, $e);
+            self::assertSame(['key' => 'foo', 'dimension_names' => ['loc', 'stt']], $e->debugContext());
             self::assertStringContainsString('does not match the expected format', $e->getMessage());
         }
 
         try {
             $codec->serialize(['foo']);
             self::fail('Expected invalid tuple length rejection');
-        } catch (\InvalidArgumentException $e) {
+        } catch (SlotFlowInvalidArgumentException $e) {
+            self::assertSame(['expected_dimension_count' => 2, 'received_count' => 1], $e->debugContext());
             self::assertStringContainsString('Slot tuple must have the same number of elements as dimensions', $e->getMessage());
         }
 
         try {
             $codec->validateDimensionValues(['loc' => ['foo']], allowValueArrays: false);
             self::fail('Expected value array rejection');
-        } catch (\InvalidArgumentException $e) {
+        } catch (SlotFlowInvalidArgumentException $e) {
             self::assertSame("Array values are not allowed for dimension 'loc'", $e->getMessage());
         }
 
         try {
             $codec->validateDimensionValue('loc', '*', false);
             self::fail('Expected wildcard rejection');
-        } catch (\InvalidArgumentException $e) {
+        } catch (SlotFlowInvalidArgumentException $e) {
             self::assertSame("Value for dimension 'loc' cannot be empty or null", $e->getMessage());
         }
 
         try {
             $codec->validateDimensionValue('loc', 'baz', true);
             self::fail('Expected unknown value rejection');
-        } catch (\InvalidArgumentException $e) {
+        } catch (SlotFlowInvalidArgumentException $e) {
             self::assertStringContainsString("Value 'baz' is not valid for dimension 'loc'", $e->getMessage());
         }
 
@@ -109,35 +115,35 @@ final class LibraryCoverageTest extends TestCase
         try {
             $codec->validateDimensionValue('loc', 'z*', true);
             self::fail('Expected unmatched wildcard rejection');
-        } catch (\InvalidArgumentException $e) {
+        } catch (SlotFlowInvalidArgumentException $e) {
             self::assertStringContainsString("Unknown loc: 'z*'", $e->getMessage());
         }
 
         try {
             $codec->matchDimensionValues('bad', '*');
             self::fail('Expected unknown dimension rejection');
-        } catch (\InvalidArgumentException $e) {
+        } catch (SlotFlowInvalidArgumentException $e) {
             self::assertSame('Unknown dimension: bad', $e->getMessage());
         }
 
         try {
             $codec->matchDimensionValues('loc', 'baz');
             self::fail('Expected invalid literal rejection');
-        } catch (\InvalidArgumentException $e) {
+        } catch (SlotFlowInvalidArgumentException $e) {
             self::assertStringContainsString("Value 'baz' is not valid for dimension 'loc'", $e->getMessage());
         }
 
         try {
             $codec->initialDimensionValueValidation(['loc' => ['bad*']]);
             self::fail('Expected wildcard char rejection');
-        } catch (\InvalidArgumentException $e) {
+        } catch (SlotFlowInvalidArgumentException $e) {
             self::assertStringContainsString("cannot contain wildcard '*'", $e->getMessage());
         }
 
         try {
             $codec->initialDimensionValueValidation(['loc' => ['bad|alt']]);
             self::fail('Expected alternative char rejection');
-        } catch (\InvalidArgumentException $e) {
+        } catch (SlotFlowInvalidArgumentException $e) {
             self::assertStringContainsString("cannot contain alternative character '|'", $e->getMessage());
         }
     }
@@ -204,11 +210,13 @@ final class LibraryCoverageTest extends TestCase
         try {
             $item->setMovementResult($result);
             self::fail('Expected duplicate result guard');
-        } catch (\LogicException $e) {
+        } catch (SlotFlowLogicException $e) {
+            self::assertInstanceOf(SlotFlowExceptionInterface::class, $e);
+            self::assertSame(['has_existing_result' => true], $e->debugContext());
             self::assertSame('Movement result already set', $e->getMessage());
         }
 
-        $this->expectException(\InvalidArgumentException::class);
+        $this->expectException(SlotFlowInvalidArgumentException::class);
         $this->expectExceptionMessage('Subject ID must be a non-empty string.');
         /** @psalm-suppress InvalidArgument */
         InventoryBatch::fromRows(
@@ -523,21 +531,21 @@ final class LibraryCoverageTest extends TestCase
         try {
             $space->validateKnownDimensionNames(['bad1', 'bad2']);
             self::fail('Expected multiple unknown dimensions rejection');
-        } catch (\InvalidArgumentException $e) {
+        } catch (SlotFlowInvalidArgumentException $e) {
             self::assertSame('Invalid slot values: unknown dimensions: [bad1, bad2]', $e->getMessage());
         }
 
         try {
             $space->expandSlotPattern(['foo']);
             self::fail('Expected tuple length rejection');
-        } catch (\InvalidArgumentException $e) {
+        } catch (SlotFlowInvalidArgumentException $e) {
             self::assertStringContainsString('same number of elements as dimensions', $e->getMessage());
         }
 
         try {
             $space->slot(['loc' => 'foo', 'extra' => 'oops']);
             self::fail('Expected invalid slot array rejection');
-        } catch (\InvalidArgumentException $e) {
+        } catch (SlotFlowInvalidArgumentException $e) {
             self::assertStringContainsString('missing dimensions: [stt]', $e->getMessage());
             self::assertStringContainsString('unknown dimensions: [extra]', $e->getMessage());
         }
@@ -545,7 +553,7 @@ final class LibraryCoverageTest extends TestCase
         try {
             (new Cascade('empty'))->stepByLabeledEdges();
             self::fail('Expected empty label rejection');
-        } catch (\InvalidArgumentException $e) {
+        } catch (SlotFlowInvalidArgumentException $e) {
             self::assertSame('At least one edge label is required', $e->getMessage());
         }
     }
@@ -849,21 +857,21 @@ final class LibraryCoverageTest extends TestCase
         try {
             $denyFirst->dimensionValues('bad');
             self::fail('Expected unknown dimension');
-        } catch (\InvalidArgumentException $e) {
+        } catch (SlotFlowInvalidArgumentException $e) {
             self::assertSame('Unknown dimension: bad', $e->getMessage());
         }
 
         try {
             $denyFirst->expandSlotPattern(['bad' => 'x']);
             self::fail('Expected unknown dimension in pattern');
-        } catch (\InvalidArgumentException $e) {
+        } catch (SlotFlowInvalidArgumentException $e) {
             self::assertSame('Unknown dimension: bad', $e->getMessage());
         }
 
         try {
             $denyFirst->getCascade('missing');
             self::fail('Expected missing cascade');
-        } catch (\InvalidArgumentException $e) {
+        } catch (SlotFlowInvalidArgumentException $e) {
             self::assertSame("Cascade 'missing' not defined", $e->getMessage());
         }
 

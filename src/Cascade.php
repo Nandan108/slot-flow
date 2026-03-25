@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Nandan108\SlotFlow;
 
+use Nandan108\SlotFlow\Exceptions\SlotFlowInvalidArgumentException;
 use Nandan108\SlotFlow\Internal\CascadeStep;
 use Nandan108\SlotFlow\Internal\CascadeStepBuilder;
 
@@ -115,7 +116,10 @@ final class Cascade
     public function stepByLabeledEdges(string ...$edgeLabels): CascadeStepBuilder
     {
         if ([] === $edgeLabels) {
-            throw new \InvalidArgumentException('At least one edge label is required');
+            throw new SlotFlowInvalidArgumentException(
+                'At least one edge label is required',
+                ['edge_labels' => $edgeLabels],
+            );
         }
 
         /** @var list<non-empty-string> $labelList */

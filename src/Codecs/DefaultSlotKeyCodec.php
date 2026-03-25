@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Nandan108\SlotFlow\Codecs;
 
 use Nandan108\SlotFlow\Contracts\SlotCodec;
+use Nandan108\SlotFlow\Exceptions\SlotFlowInvalidArgumentException;
 use Nandan108\SlotFlow\SlotSpace;
 
 /**
@@ -81,13 +82,19 @@ class DefaultSlotKeyCodec implements SlotCodec
         $dimNames = $this->space->dimensionNames();
         if (array_is_list($values)) {
             if (count($values) !== count($dimNames)) {
-                throw new \InvalidArgumentException('Slot tuple must have the same number of elements as dimensions: '.count($dimNames));
+                throw new SlotFlowInvalidArgumentException(
+                    'Slot tuple must have the same number of elements as dimensions: '.count($dimNames),
+                    ['expected_dimension_count' => count($dimNames), 'received_count' => count($values)],
+                );
             }
 
             $values = array_combine($dimNames, $values);
         } elseif (array_diff(array_keys($values), $dimNames)) {
             // throw if $value keys are not a subset of the dimension names
-            throw new \InvalidArgumentException('Value keys must be a subset of dimension names: '.implode(', ', $dimNames));
+            throw new SlotFlowInvalidArgumentException(
+                'Value keys must be a subset of dimension names: '.implode(', ', $dimNames),
+                ['dimension_names' => $dimNames, 'received_keys' => array_keys($values)],
+            );
         }
 
         // make sure the values are in the same order as the dimensions
@@ -126,7 +133,10 @@ class DefaultSlotKeyCodec implements SlotCodec
         $exploded = explode(self::SEPARATOR, $key);
         // throw if the number of exploded parts does not match the number of dimensions
         if (count($exploded) !== count($this->space->dimensionNames())) {
-            throw new \InvalidArgumentException("Key '$key' does not match the expected format for dimensions: ".implode(', ', $this->space->dimensionNames()));
+            throw new SlotFlowInvalidArgumentException(
+                "Key '$key' does not match the expected format for dimensions: ".implode(', ', $this->space->dimensionNames()),
+                ['key' => $key, 'dimension_names' => $this->space->dimensionNames()],
+            );
         }
         $dimensions = array_combine($this->space->dimensionNames(), $exploded);
 
@@ -145,7 +155,7 @@ class DefaultSlotKeyCodec implements SlotCodec
      *
      * @param array<non-empty-string, array<string|null>|string|null> $values
      *
-     * @throws \InvalidArgumentException
+     * @throws SlotFlowInvalidArgumentException
      */
     #[\Override]
     public function validateDimensionValues(array $values, bool $allowWildcards = false, bool $allowValueArrays = false): void
@@ -153,7 +163,10 @@ class DefaultSlotKeyCodec implements SlotCodec
         foreach ($values as $dim => $val) {
             if (is_array($val)) {
                 if (!$allowValueArrays) {
-                    throw new \InvalidArgumentException("Array values are not allowed for dimension '$dim'");
+                    throw new SlotFlowInvalidArgumentException(
+                        "Array values are not allowed for dimension '$dim'",
+                        ['dimension' => $dim],
+                    );
                 }
                 foreach ($val as $v) {
                     $this->validateDimensionValue($dim, $v, $allowWildcards);
@@ -167,7 +180,7 @@ class DefaultSlotKeyCodec implements SlotCodec
     /**
      * @param non-empty-string $dimension
      *
-     * @throws \InvalidArgumentException
+     * @throws SlotFlowInvalidArgumentException
      */
     #[\Override]
     public function validateDimensionValue(string $dimension, ?string $value, bool $allowWildcards): void
@@ -177,15 +190,19 @@ class DefaultSlotKeyCodec implements SlotCodec
         $hasWildCard = $isWildcard || str_contains($value, self::WILDCARD);
 
         if ($hasWildCard && !$allowWildcards) {
-            throw new \InvalidArgumentException("Value for dimension '$dimension' cannot be empty or null");
+            throw new SlotFlowInvalidArgumentException(
+                "Value for dimension '$dimension' cannot be empty or null",
+                ['dimension' => $dimension, 'value' => $value],
+            );
         }
         if ($isWildcard) {
             return;
         }
 
         if (!$this->matchDimensionValues($dimension, $value)) {
-            throw new \InvalidArgumentException(
+            throw new SlotFlowInvalidArgumentException(
                 "Unknown $dimension: '$value'. Expected values: ".implode(', ', $this->space->dimensionValues($dimension)),
+                ['dimension' => $dimension, 'value' => $value, 'expected_values' => $this->space->dimensionValues($dimension)],
             );
         }
     }
@@ -228,9 +245,10 @@ class DefaultSlotKeyCodec implements SlotCodec
                 $allMatches = [...$allMatches, ...$matches];
             } else {
                 if (!in_array($subPattern, $values, true)) {
-                    throw new \InvalidArgumentException(
+                    throw new SlotFlowInvalidArgumentException(
                         "Value '$subPattern' is not valid for dimension '$dimension'. Expected values: "
                         .implode(', ', $values),
+                        ['dimension' => $dimension, 'value' => $subPattern, 'expected_values' => $values],
                     );
                 }
                 $allMatches = [...$allMatches, $subPattern];
@@ -256,13 +274,22 @@ class DefaultSlotKeyCodec implements SlotCodec
         foreach ($dimensions as $name => $values) {
             foreach ($values as $value) {
                 if ($separator && str_contains($value, $separator)) {
-                    throw new \InvalidArgumentException("Dimension values cannot contain '{$separator}': $name => $value");
+                    throw new SlotFlowInvalidArgumentException(
+                        "Dimension values cannot contain '{$separator}': $name => $value",
+                        ['dimension' => $name, 'value' => $value, 'reserved_character' => $separator],
+                    );
                 }
                 if (str_contains($value, self::WILDCARD)) {
-                    throw new \InvalidArgumentException("Dimension values cannot contain wildcard '{$this->wildcard()}': $name => $value");
+                    throw new SlotFlowInvalidArgumentException(
+                        "Dimension values cannot contain wildcard '{$this->wildcard()}': $name => $value",
+                        ['dimension' => $name, 'value' => $value, 'reserved_character' => $this->wildcard()],
+                    );
                 }
                 if (str_contains($value, self::ALTERNATIVE)) {
-                    throw new \InvalidArgumentException("Dimension values cannot contain alternative character '{$this->alternative()}': $name => $value");
+                    throw new SlotFlowInvalidArgumentException(
+                        "Dimension values cannot contain alternative character '{$this->alternative()}': $name => $value",
+                        ['dimension' => $name, 'value' => $value, 'reserved_character' => $this->alternative()],
+                    );
                 }
             }
         }

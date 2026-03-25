@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Nandan108\SlotFlow\Contracts;
 
+use Nandan108\SlotFlow\Exceptions\SlotFlowInvalidArgumentException;
 use Nandan108\SlotFlow\SlotSpace;
 
 /**
@@ -54,7 +55,7 @@ interface SlotCodec
      *
      * @psalm-return ?TSlotArrayPattern
      *
-     * @throws \InvalidArgumentException
+     * @throws SlotFlowInvalidArgumentException
      */
     public function deserialize(?string $key): ?array;
 
@@ -69,7 +70,7 @@ interface SlotCodec
      *
      * @param array<non-empty-string, array<string|null>|string|null> $values
      *
-     * @throws \InvalidArgumentException
+     * @throws SlotFlowInvalidArgumentException
      */
     public function validateDimensionValues(array $values, bool $allowWildcards = false, bool $allowValueArrays = false): void;
 
@@ -78,7 +79,7 @@ interface SlotCodec
      *
      * @param non-empty-string $dimension
      *
-     * @throws \InvalidArgumentException
+     * @throws SlotFlowInvalidArgumentException
      */
     public function validateDimensionValue(string $dimension, ?string $value, bool $allowWildcards): void;
 

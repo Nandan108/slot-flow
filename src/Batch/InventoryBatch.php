@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Nandan108\SlotFlow\Batch;
 
+use Nandan108\SlotFlow\Exceptions\SlotFlowInvalidArgumentException;
 use Nandan108\SlotFlow\Inventory;
 use Nandan108\SlotFlow\MovementResult;
 use Nandan108\SlotFlow\Slot;
@@ -71,7 +72,10 @@ final class InventoryBatch
 
             /** @psalm-suppress DocblockTypeContradiction */
             if (!is_string($subjectId) || '' === $subjectId) {
-                throw new \InvalidArgumentException('Subject ID must be a non-empty string.');
+                throw new SlotFlowInvalidArgumentException(
+                    'Subject ID must be a non-empty string.',
+                    ['subject' => $subject, 'subject_id' => $subjectId],
+                );
             }
 
             $rowsBySubject[$subjectId]['subject'] ??= $subject;
