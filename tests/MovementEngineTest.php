@@ -4,11 +4,11 @@ declare(strict_types=1);
 
 namespace Tests;
 
-use Nandan108\SlotFlow\Cascade;
-use Nandan108\SlotFlow\Inventory;
+use Nandan108\SlotFlow\Flow;
 use Nandan108\SlotFlow\MovementEngine;
+use Nandan108\SlotFlow\QuantityState;
 use Nandan108\SlotFlow\Runtime\AllocationDecision;
-use Nandan108\SlotFlow\Runtime\CascadeContext;
+use Nandan108\SlotFlow\Runtime\FlowContext;
 use Nandan108\SlotFlow\SlotSpace;
 use PHPUnit\Framework\TestCase;
 
@@ -23,8 +23,8 @@ final class MovementEngineTest extends TestCase
 
         $fooFs = $space->slot('foo.fs');
         $nil = $space->nilSlot();
-        $inventory = new Inventory($space, [[$fooFs, 2]]);
-        $cascade = Cascade::define('inbound', static fn (Cascade $cascade) => $cascade
+        $inventory = new QuantityState($space, [[$fooFs, 2]]);
+        $cascade = Flow::define('inbound', static fn (Flow $cascade) => $cascade
             ->move(null, 'foo.fs'));
 
         $result = (new MovementEngine())->execute(
@@ -50,8 +50,8 @@ final class MovementEngineTest extends TestCase
 
         $fooFs = $space->slot('foo.fs');
         $nil = $space->nilSlot();
-        $inventory = new Inventory($space, [[$fooFs, 2]]);
-        $cascade = Cascade::define('outbound', static fn (Cascade $cascade) => $cascade
+        $inventory = new QuantityState($space, [[$fooFs, 2]]);
+        $cascade = Flow::define('outbound', static fn (Flow $cascade) => $cascade
             ->move('foo.fs', null));
 
         $result = (new MovementEngine())->execute(
@@ -75,8 +75,8 @@ final class MovementEngineTest extends TestCase
             'stt'   => ['fs', 'sd'],
         ]);
 
-        $inventory = new Inventory($space, [['foo.fs', 2]]);
-        $cascade = Cascade::define('sell', static fn (Cascade $cascade) => $cascade
+        $inventory = new QuantityState($space, [['foo.fs', 2]]);
+        $cascade = Flow::define('sell', static fn (Flow $cascade) => $cascade
             ->move('foo.fs', 'foo.sd'));
 
         $result = (new MovementEngine())->execute($inventory, $space, $cascade, 3);
@@ -94,14 +94,14 @@ final class MovementEngineTest extends TestCase
             'stt'   => ['fs', 'sd'],
         ]);
 
-        $inventory = new Inventory($space, [
+        $inventory = new QuantityState($space, [
             ['a.fs', 4],
             ['b.fs', 4],
         ]);
 
-        $cascade = Cascade::define('allocate', static fn (Cascade $cascade) => $cascade
+        $cascade = Flow::define('allocate', static fn (Flow $cascade) => $cascade
             ->move('a|b.fs', 'dest.sd')
-            ->allocate(static function (CascadeContext $context): array {
+            ->allocate(static function (FlowContext $context): array {
                 $edges = $context->edges;
 
                 return [
@@ -120,9 +120,9 @@ final class MovementEngineTest extends TestCase
         self::assertSame(1, $result->events[1]->quantity);
     }
 
-    public function testCascadeCanReverseConditionallyAndFlipEdges(): void
+    public function testFlowCanReverseConditionallyAndFlipEdges(): void
     {
-        $cascade = Cascade::define('reverse', static fn (Cascade $cascade) => $cascade
+        $cascade = Flow::define('reverse', static fn (Flow $cascade) => $cascade
             ->move('foo.fs', 'foo.sd')
             ->move('bar.fs', 'bar.sd'));
 
@@ -145,8 +145,8 @@ final class MovementEngineTest extends TestCase
             \Nandan108\SlotFlow\Rules\EdgeRule::allowLabeled('sell', 'foo.fs', 'dest.sd'),
         ]);
 
-        $inventory = new Inventory($space, [['foo.fs', 2]]);
-        $cascade = Cascade::define('sell', static fn (Cascade $c) => $c->stepByLabeledEdges('sell'));
+        $inventory = new QuantityState($space, [['foo.fs', 2]]);
+        $cascade = Flow::define('sell', static fn (Flow $c) => $c->stepByLabeledEdges('sell'));
 
         $result = (new MovementEngine())->execute($inventory, $space, $cascade, 2);
 
@@ -163,10 +163,10 @@ final class MovementEngineTest extends TestCase
             'state' => ['sd', 'fs'],
         ]);
 
-        $inventory = new Inventory($space, [
+        $inventory = new QuantityState($space, [
             ['sup.C.sd', 2],
         ]);
-        $cascade = Cascade::define('receive', static fn (Cascade $cascade) => $cascade
+        $cascade = Flow::define('receive', static fn (Flow $cascade) => $cascade
             ->move('sup.{own}.{state}', '{loc}.{own}.{state}')
             ->move(null, '{loc}.{own}.fs'));
 

@@ -27,7 +27,7 @@ final class CommerceFlowExampleTest extends TestCase
         self::assertSame(1, $batch->items()[1]->quantity);
     }
 
-    public function testProcessBatchAcceptsCascade(): void
+    public function testProcessBatchAcceptsFlow(): void
     {
         $example = new CommerceFlowExample();
         $space = $this->space($example);
@@ -35,11 +35,11 @@ final class CommerceFlowExampleTest extends TestCase
             ['var' => 'A', 'mvQtty' => 2, 'loc' => 'wh1', 'own' => 'CS', 'inv' => ['fs' => 1, 'sd' => 3]],
         ];
 
-        $space->cascade('ingress', [
+        $space->flow('ingress', [
             ['*.*.sd', '*.*.fs'],
         ]);
 
-        $result = $example->processBatch($rows, $space->getCascade('ingress'));
+        $result = $example->processBatch($rows, $space->getFlow('ingress'));
         $movement = $this->movementResult($result);
 
         self::assertSame(0, $movement->remaining);
@@ -90,7 +90,7 @@ final class CommerceFlowExampleTest extends TestCase
         $example = new CommerceFlowExample();
         $space = $this->space($example);
 
-        $space->cascade('ingress', [
+        $space->flow('ingress', [
             ['*.*.sd', '*.*.fs'],
         ]);
 

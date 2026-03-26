@@ -55,24 +55,34 @@ final class MovementEvent
     }
 
     /**
-     * Convert this event to per-slot inventory mutations.
+     * Convert this event to per-slot quantity-state deltas.
      *
-     * @return list<InventoryMutation>
+     * @return list<QuantityStateDelta>
      */
-    public function mutations(): array
+    public function deltas(): array
     {
-        /** @var list<InventoryMutation> $mutations */
-        $mutations = [];
+        /** @var list<QuantityStateDelta> $deltas */
+        $deltas = [];
 
         if (!$this->edge->from->isNil()) {
-            $mutations[] = new InventoryMutation($this->edge->from, -$this->quantity);
+            $deltas[] = new QuantityStateDelta($this->edge->from, -$this->quantity);
         }
 
         if (!$this->edge->to->isNil()) {
-            $mutations[] = new InventoryMutation($this->edge->to, $this->quantity);
+            $deltas[] = new QuantityStateDelta($this->edge->to, $this->quantity);
         }
 
-        return $mutations;
+        return $deltas;
+    }
+
+    /**
+     * @deprecated use deltas() instead
+     *
+     * @return list<QuantityStateDelta>
+     */
+    public function mutations(): array
+    {
+        return $this->deltas();
     }
 
     /**

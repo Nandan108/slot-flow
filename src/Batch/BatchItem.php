@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace Nandan108\SlotFlow\Batch;
 
 use Nandan108\SlotFlow\Exceptions\SlotFlowLogicException;
-use Nandan108\SlotFlow\Inventory;
 use Nandan108\SlotFlow\MovementResult;
+use Nandan108\SlotFlow\QuantityState;
 
 /**
  * @template T
@@ -18,13 +18,13 @@ final class BatchItem
     private ?MovementResult $result = null;
 
     /**
-     * @param T         $subject
-     * @param Inventory $inventory the initial inventory state for this batch item
+     * @param T             $subject
+     * @param QuantityState $inventory the initial quantity state for this batch item
      */
     public function __construct(
         public readonly mixed $subject,
         public readonly int $quantity,
-        public readonly Inventory $inventory,
+        public readonly QuantityState $inventory,
     ) {
     }
 

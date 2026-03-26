@@ -139,7 +139,7 @@ In the legacy consignment model, it represented the maximum supplier consignment
 
 In SlotFlow, `ifs` is not modeled as canonical slot metadata. It is ingested as inventory-side slot attributes, because it is dynamic per inventory instance, not a permanent property of the slot definition.
 
-That metadata is then available to policies through `CascadeContext::slotAttribute(...)`.
+That metadata is then available to policies through `FlowContext::slotAttribute(...)`.
 
 ## Reservation Timing
 
@@ -155,7 +155,7 @@ That choice keeps delivery promises and booking allocation aligned. It avoids th
 The commerce fixture is just one translation layer over the generic engine:
 
 - `variant` maps to core `subject`
-- row ingestion maps database-ish rows into `InventoryBatch`
+- row ingestion maps database-ish rows into `QuantityStateBatch`
 - named commerce flows map to `Cascade` definitions
 
 If you understand this fixture, you understand the intended way to embed SlotFlow into an application.

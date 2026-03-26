@@ -6,7 +6,7 @@ namespace Nandan108\SlotFlow\Policies;
 
 use Nandan108\SlotFlow\Contracts\EdgeOrderingPolicyInterface;
 use Nandan108\SlotFlow\MovementEdge;
-use Nandan108\SlotFlow\Runtime\CascadeContext;
+use Nandan108\SlotFlow\Runtime\FlowContext;
 use Nandan108\SlotFlow\SlotSpace;
 
 /**
@@ -65,7 +65,7 @@ final class DimensionPriority implements EdgeOrderingPolicyInterface
      * ensuring it is treated as lowest priority.
      */
     #[\Override]
-    public function orderEdges(CascadeContext $ctx): array
+    public function orderEdges(FlowContext $ctx): array
     {
         $edges = $ctx->edges;
         $rankByDimensionValue = $this->getRankByDimensionValue($ctx->space);

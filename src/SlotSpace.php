@@ -13,7 +13,7 @@ use Nandan108\SlotFlow\Rules\RuleSet;
 use Nandan108\SlotFlow\Rules\SlotRule;
 
 /**
- * Defines the slot space, its dimensions, the slots that exist within it, and the edges and cascades that operate on it.
+ * Defines the slot space, its dimensions, the slots that exist within it, and the edges and flows that operate on it.
  *
  * @psalm-type TDimensionName = non-empty-string the name and value of a dimension must be non-empty strings
  * @psalm-type TDimensionValue = non-empty-string dimension values must be non-empty strings, and each dimension must have at least one value
@@ -59,7 +59,10 @@ final class SlotSpace
 
     private Slot $nilSlot;
 
-    /** @var array<non-empty-string, Cascade> */
+    /** @var array<non-empty-string, Flow> */
+    public array $flows = [];
+
+    /** @var array<non-empty-string, Flow> */
     public array $cascades = [];
 
     /**
@@ -596,6 +599,10 @@ final class SlotSpace
     /**
      * Register a named cascade definition.
      *
+     * @deprecated use flow() instead
+     *
+     * @psalm-suppress DeprecatedClass
+     *
      * @param non-empty-string $name
      * @param \Closure(Cascade):mixed|list<array{
      *     0?: array<int|string, string|null>|string|null,
@@ -608,7 +615,8 @@ final class SlotSpace
      */
     public function cascade(string $name, \Closure | array $builder): self
     {
-        if (isset($this->cascades[$name])) {
+        /** @psalm-suppress DeprecatedClass */
+        if (isset($this->flows[$name])) {
             throw new SlotFlowInvalidArgumentException(
                 "Cascade '$name' already defined",
                 ['cascade' => $name],
@@ -616,7 +624,7 @@ final class SlotSpace
         }
 
         if (is_array($builder)) {
-            $this->cascades[$name] = Cascade::define(
+            $cascade = Cascade::define(
                 $name,
                 static function (Cascade $cascade) use ($builder): void {
                     foreach ($builder as $edgePattern) {
@@ -631,25 +639,126 @@ final class SlotSpace
                     }
                 },
             );
+            $this->flows[$name] = $cascade;
+            $this->cascades[$name] = $cascade;
 
             return $this;
         }
 
-        $this->cascades[$name] = Cascade::define($name, $builder);
+        $this->flows[$name] = Cascade::define($name, $builder);
+        $this->cascades[$name] = $this->flows[$name];
 
         return $this;
     }
 
+    /**
+     * Register a named flow definition.
+     *
+     * @param non-empty-string $name
+     * @param \Closure(Flow):mixed|list<array{
+     *     0?: array<int|string, string|null>|string|null,
+     *     1?: array<int|string, string|null>|string|null,
+     *     from?: array<int|string, string|null>|string|null,
+     *     to?: array<int|string, string|null>|string|null
+     * }> $builder
+     *
+     * @psalm-param \Closure(Flow):mixed|list<TEdgePattern> $builder
+     */
+    public function flow(string $name, \Closure | array $builder): self
+    {
+        if (isset($this->flows[$name])) {
+            throw new SlotFlowInvalidArgumentException(
+                "Flow '$name' already defined",
+                ['flow' => $name],
+            );
+        }
+
+        if (is_array($builder)) {
+            $flow = Flow::define(
+                $name,
+                static function (Flow $flow) use ($builder): void {
+                    foreach ($builder as $edgePattern) {
+                        /** @psalm-suppress DocblockTypeContradiction */
+                        if (array_is_list($edgePattern)) {
+                            /** @var array{TSlotPattern, TSlotPattern} $edgePattern */
+                            $flow->move($edgePattern[0], $edgePattern[1]);
+                        } else {
+                            /** @var array{from:TSlotPattern, to:TSlotPattern} $edgePattern */
+                            $flow->move($edgePattern['from'], $edgePattern['to']);
+                        }
+                    }
+                },
+            );
+            $this->flows[$name] = $flow;
+            $this->cascades[$name] = $flow;
+
+            return $this;
+        }
+
+        $this->flows[$name] = Flow::define($name, $builder);
+        $this->cascades[$name] = $this->flows[$name];
+
+        return $this;
+    }
+
+    public function getFlow(string $name): Flow
+    {
+        if (!isset($this->flows[$name])) {
+            throw new SlotFlowInvalidArgumentException(
+                "Flow '$name' not defined",
+                ['flow' => $name],
+            );
+        }
+
+        return $this->flows[$name];
+    }
+
+    /**
+     * @deprecated use getFlow() instead
+     *
+     * @psalm-suppress DeprecatedClass
+     */
     public function getCascade(string $name): Cascade
     {
-        if (!isset($this->cascades[$name])) {
+        /** @psalm-suppress DeprecatedClass */
+        if (!isset($this->flows[$name])) {
             throw new SlotFlowInvalidArgumentException(
                 "Cascade '$name' not defined",
                 ['cascade' => $name],
             );
         }
 
-        return $this->cascades[$name];
+        $flow = $this->flows[$name];
+
+        /** @psalm-suppress DeprecatedClass */
+        /** @psalm-suppress MixedArgumentTypeCoercion */
+        return $flow instanceof Cascade
+            ? $flow
+            : Cascade::define($flow->name(), static function (Cascade $cascade) use ($flow): void {
+                foreach ($flow->steps() as $step) {
+                    if (null !== $step->edgeLabels) {
+                        $builder = $cascade->stepByLabeledEdges(...$step->edgeLabels);
+                    } else {
+                        $builder = $cascade->move($step->from, $step->to);
+                    }
+
+                    foreach (array_reverse($step->orderingPolicies) as $policy) {
+                        $builder->orderBy($policy);
+                    }
+
+                    foreach ($step->filterPolicies as $policy) {
+                        $builder->filter($policy);
+                    }
+
+                    foreach ($step->quantityConstraintPolicies as $policy) {
+                        $builder->constraint($policy);
+                    }
+
+                    foreach ($step->allocationPolicies as $policy) {
+                        $builder->allocate($policy);
+                    }
+                }
+            });
     }
 
     /**

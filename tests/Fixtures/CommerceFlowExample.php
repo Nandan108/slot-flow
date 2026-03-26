@@ -5,9 +5,8 @@ declare(strict_types=1);
 namespace Tests\Fixtures;
 
 use Nandan108\SlotFlow\Batch\BatchMovementEngine;
-use Nandan108\SlotFlow\Batch\InventoryBatch;
-use Nandan108\SlotFlow\Cascade;
-use Nandan108\SlotFlow\Inventory;
+use Nandan108\SlotFlow\Batch\QuantityStateBatch;
+use Nandan108\SlotFlow\Flow;
 use Nandan108\SlotFlow\MovementEngine;
 use Nandan108\SlotFlow\MovementResult;
 use Nandan108\SlotFlow\Policies\DimensionPriority;
@@ -92,7 +91,7 @@ final class CommerceFlowExample
         // possible flow needs to be predefined here.
             // PO reception: move from supplier to warehouse, then optionally regularize to forsale
             // if received quantity is higher than ordered quantity
-            ->cascade('receive-po', static fn (Cascade $c) => $c
+            ->flow('receive-po', static fn (Flow $c) => $c
                 ->move('sup.{own}.{from-state}', ['loc' => '{loc}'])
                 // note the use of ->create() to allow creation of new quantities
                 // from 'nil', the source/sink slot that represents outside of the system.
@@ -100,9 +99,9 @@ final class CommerceFlowExample
 
             // Reservation: allow reservation from any forsale stock, this is done right before
             // engaging payment gateway, when purchase intent is clear and confirmed.
-            ->cascade(
+            ->flow(
                 'reserve',
-                static fn (Cascade $c) => $c
+                static fn (Flow $c) => $c
                  ->move(['stt' => 'fs'], ['stt' => 'res']) // reserved stock can be sold
                  ->orderBy(new DimensionPriority([
                      'loc' => ['wh*', 'sup'], // prefer to sell from warehouses before suppliers
@@ -110,13 +109,13 @@ final class CommerceFlowExample
                  ])),
             )
             // reserved stock can be released back to forsale after a timeout if payment doesn't go through
-            ->cascade('release', [[['stt' => 'res'], ['stt' => 'fs']]])
+            ->flow('release', [[['stt' => 'res'], ['stt' => 'fs']]])
 
             // Booking (checkout): move customer's reserved stock to "sold" status
-            ->cascade('book', [[['stt' => 'res'], ['stt' => 'sd']]]);
+            ->flow('book', [[['stt' => 'res'], ['stt' => 'sd']]]);
         $this->space
             // Order cancellation: move from sold back to forsale
-            ->cascade('cancelBooking', static fn (Cascade $c) => $c
+            ->flow('cancelBooking', static fn (Flow $c) => $c
                  ->move(['stt' => 'fs'], ['stt' => 'fs']) // reserved stock can be sold
                  ->orderBy(new DimensionPriority([
                      'loc' => ['sup', 'wh*'], // prefer to sell from warehouses before suppliers
@@ -142,7 +141,7 @@ final class CommerceFlowExample
             // defective stock can be discarded
             // here we use ->destroy(), which moves quantities to the 'nil' slot, representing outside of the system.
             // Think of it as displacing quantities to /dev/null
-            ->cascade('discard', static fn (Cascade $c) => $c->destroy('*.*.def'));
+            ->flow('discard', static fn (Flow $c) => $c->destroy('*.*.def'));
     }
 
     /**
@@ -150,9 +149,9 @@ final class CommerceFlowExample
      *
      * @param array<TRow> $rows
      *
-     * @return InventoryBatch<VariantType>
+     * @return QuantityStateBatch<VariantType>
      */
-    public function prepareBatch(array $rows): InventoryBatch
+    public function prepareBatch(array $rows): QuantityStateBatch
     {
         $space = $this->space;
         /** @var \Closure(TRow): list<array{0: Slot|array<non-empty-string, non-empty-string>, 1: int, 2?: array<string, mixed>}> $slotRowGetter */
@@ -161,7 +160,7 @@ final class CommerceFlowExample
             return self::slotRowsForSpace($space, $row);
         };
 
-        return InventoryBatch::fromRows(
+        return QuantityStateBatch::fromRows(
             space: $space,
             rows: $rows,
             /** @param TRow $row */
@@ -205,7 +204,7 @@ final class CommerceFlowExample
      *
      * @psalm-return array{result: MovementResult|null, subject: non-empty-string}[] $results
      */
-    public function processBatch(array $rows, string | Cascade $cascade, array $context = [], array $params = []): array
+    public function processBatch(array $rows, string | Flow $flow, array $context = [], array $params = []): array
     {
         $engine = new BatchMovementEngine(new MovementEngine());
 
@@ -213,7 +212,7 @@ final class CommerceFlowExample
             ->execute(
                 batch: $this->prepareBatch($rows),
                 space: $this->space,
-                cascade: $cascade,
+                cascade: $flow,
                 context: $context,
                 params: $params,
             )
@@ -240,7 +239,7 @@ final class CommerceFlowExample
     {
         return $this->processBatch(
             rows: $optsAndQuantities,
-            cascade: $this->space->getCascade('receive-po')->reverseIf($reverse),
+            flow: $this->space->getFlow('receive-po')->reverseIf($reverse),
             params: [
                 'loc'   => $locCode,
                 'own'   => $ownership,

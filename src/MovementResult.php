@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace Nandan108\SlotFlow;
 
-use Nandan108\SlotFlow\Results\InventoryMutation;
 use Nandan108\SlotFlow\Results\LedgerEntry;
 use Nandan108\SlotFlow\Results\MovementEvent;
+use Nandan108\SlotFlow\Results\QuantityStateDelta;
 
 /**
  * Immutable summary of one cascade execution.
@@ -38,53 +38,63 @@ final class MovementResult
     }
 
     /**
-     * Aggregate per-slot inventory mutations for this result.
+     * Aggregate per-slot quantity-state deltas for this result.
      *
      * The output is stable in first-seen slot order, which makes it suitable
      * for deterministic persistence and testing.
      *
-     * @return list<InventoryMutation>
+     * @return list<QuantityStateDelta>
      */
-    public function mutations(): array
+    public function deltas(): array
     {
-        /** @var array<string, InventoryMutation> $mutationsBySlot */
-        $mutationsBySlot = [];
+        /** @var array<string, QuantityStateDelta> $deltasBySlot */
+        $deltasBySlot = [];
         /** @var list<string> $slotOrder */
         $slotOrder = [];
 
         foreach ($this->events as $event) {
-            foreach ($event->mutations() as $mutation) {
-                $slotKey = $mutation->slot->key;
+            foreach ($event->deltas() as $delta) {
+                $slotKey = $delta->slot->key;
 
-                if (!isset($mutationsBySlot[$slotKey])) {
-                    $mutationsBySlot[$slotKey] = $mutation;
+                if (!isset($deltasBySlot[$slotKey])) {
+                    $deltasBySlot[$slotKey] = $delta;
                     $slotOrder[] = $slotKey;
                     continue;
                 }
 
-                $existing = $mutationsBySlot[$slotKey];
+                $existing = $deltasBySlot[$slotKey];
                 /** @psalm-suppress InvalidOperand */
-                $delta = $existing->delta + $mutation->delta;
+                $mergedDelta = $existing->delta + $delta->delta;
 
-                $mutationsBySlot[$slotKey] = new InventoryMutation(
+                $deltasBySlot[$slotKey] = new QuantityStateDelta(
                     $existing->slot,
-                    $delta,
+                    $mergedDelta,
                 );
             }
         }
 
-        /** @var list<InventoryMutation> $mutations */
-        $mutations = [];
+        /** @var list<QuantityStateDelta> $deltas */
+        $deltas = [];
         foreach ($slotOrder as $slotKey) {
-            $mutation = $mutationsBySlot[$slotKey];
-            if (0 === $mutation->delta) {
+            $delta = $deltasBySlot[$slotKey];
+            if (0 === $delta->delta) {
                 continue;
             }
 
-            $mutations[] = $mutation;
+            $deltas[] = $delta;
         }
 
-        return $mutations;
+        return $deltas;
+    }
+
+    /**
+     * @deprecated use deltas() instead
+     *
+     * @return list<QuantityStateDelta>
+     */
+    public function mutations(): array
+    {
+        return $this->deltas();
     }
 
     /**

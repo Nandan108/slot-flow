@@ -4,18 +4,13 @@ declare(strict_types=1);
 
 namespace Nandan108\SlotFlow\Results;
 
-use Nandan108\SlotFlow\Slot;
-
 /**
- * Net quantity change for one slot.
+ * Backward-compatible alias for QuantityStateDelta.
+ *
+ * @deprecated use QuantityStateDelta instead
  *
  * @api
  */
-final class InventoryMutation
+class InventoryMutation extends QuantityStateDelta
 {
-    public function __construct(
-        public readonly Slot $slot,
-        public readonly int | float $delta,
-    ) {
-    }
 }

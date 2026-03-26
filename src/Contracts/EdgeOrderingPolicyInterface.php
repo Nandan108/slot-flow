@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Nandan108\SlotFlow\Contracts;
 
 use Nandan108\SlotFlow\MovementEdge;
-use Nandan108\SlotFlow\Runtime\CascadeContext;
+use Nandan108\SlotFlow\Runtime\FlowContext;
 
 /**
  * Reorders candidate edges for one cascade step.
@@ -19,5 +19,5 @@ interface EdgeOrderingPolicyInterface
      *
      * @return list<MovementEdge>
      */
-    public function orderEdges(CascadeContext $ctx): array;
+    public function orderEdges(FlowContext $ctx): array;
 }

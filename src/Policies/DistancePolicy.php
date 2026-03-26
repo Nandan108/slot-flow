@@ -7,7 +7,7 @@ namespace Nandan108\SlotFlow\Policies;
 use Nandan108\SlotFlow\Contracts\EdgeFilterPolicyInterface;
 use Nandan108\SlotFlow\Contracts\EdgeOrderingPolicyInterface;
 use Nandan108\SlotFlow\MovementEdge;
-use Nandan108\SlotFlow\Runtime\CascadeContext;
+use Nandan108\SlotFlow\Runtime\FlowContext;
 
 /**
  * Filters or orders edges by a caller-provided distance metric.
@@ -22,7 +22,7 @@ final class DistancePolicy implements EdgeFilterPolicyInterface, EdgeOrderingPol
     }
 
     #[\Override]
-    public function filterEdges(CascadeContext $ctx): array
+    public function filterEdges(FlowContext $ctx): array
     {
         if (null === $this->max) {
             return $ctx->edges;
@@ -35,7 +35,7 @@ final class DistancePolicy implements EdgeFilterPolicyInterface, EdgeOrderingPol
     }
 
     #[\Override]
-    public function orderEdges(CascadeContext $ctx): array
+    public function orderEdges(FlowContext $ctx): array
     {
         $edges = $ctx->edges;
 
@@ -47,9 +47,9 @@ final class DistancePolicy implements EdgeFilterPolicyInterface, EdgeOrderingPol
         return $edges;
     }
 
-    private function distanceFor(MovementEdge $edge, CascadeContext $ctx): int | float
+    private function distanceFor(MovementEdge $edge, FlowContext $ctx): int | float
     {
-        /** @psalm-var array<int|float>|callable(MovementEdge, CascadeContext):int|float $distance */
+        /** @psalm-var array<int|float>|callable(MovementEdge, FlowContext):int|float $distance */
         $distance = $ctx->context['distance'] ?? null;
 
         if (is_callable($distance)) {

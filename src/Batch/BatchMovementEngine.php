@@ -4,12 +4,12 @@ declare(strict_types=1);
 
 namespace Nandan108\SlotFlow\Batch;
 
-use Nandan108\SlotFlow\Cascade;
+use Nandan108\SlotFlow\Flow;
 use Nandan108\SlotFlow\MovementEngine;
 use Nandan108\SlotFlow\SlotSpace;
 
 /**
- * Executes one cascade across all items in an inventory batch.
+ * Executes one flow across all items in a quantity-state batch.
  *
  * @api
  */
@@ -21,29 +21,29 @@ final class BatchMovementEngine
     }
 
     /**
-     * Executes a batch of inventory movements.
+     * Executes a batch of quantity-state movements.
      *
      * @template TSubject
      *
-     * @param InventoryBatch             $batch   the batch of inventory items to move
-     * @param SlotSpace                  $space   the slot space used to resolve cascade steps
-     * @param string|Cascade             $cascade the cascade containing the movement rules
-     * @param array<mixed>               $context execution context forwarded to the cascade engine
-     * @param array<string, scalar|null> $params  cascade parameter substitutions forwarded to the cascade engine
+     * @param QuantityStateBatch         $batch   the batch of quantity-state items to move
+     * @param SlotSpace                  $space   the slot space used to resolve flow steps
+     * @param string|Flow                $cascade the flow containing the movement rules
+     * @param array<mixed>               $context execution context forwarded to the movement engine
+     * @param array<string, scalar|null> $params  flow parameter substitutions forwarded to the movement engine
      *
-     * @psalm-param InventoryBatch<TSubject> $batch
+     * @psalm-param QuantityStateBatch<TSubject> $batch
      *
-     * @return InventoryBatch the batch with updated movement results for each item
+     * @return QuantityStateBatch the batch with updated movement results for each item
      *
-     * @psalm-return InventoryBatch<TSubject>
+     * @psalm-return QuantityStateBatch<TSubject>
      */
     public function execute(
-        InventoryBatch $batch,
+        QuantityStateBatch $batch,
         SlotSpace $space,
-        string | Cascade $cascade,
+        string | Flow $cascade,
         array $context = [],
         array $params = [],
-    ): InventoryBatch {
+    ): QuantityStateBatch {
         foreach ($batch->items() as $item) {
             $item->setMovementResult(
                 $this->engine->execute(

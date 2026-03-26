@@ -15,7 +15,7 @@ use Nandan108\SlotFlow\SlotSpace;
  *
  * @internal
  */
-final class CascadeStep
+final class FlowStep
 {
     /**
      * @param list<callable|EdgeOrderingPolicyInterface>   $orderingPolicies

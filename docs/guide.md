@@ -106,7 +106,7 @@ SlotFlow reserves a special `nil` slot to represent movement across the boundary
 - `slot -> nil` means quantity leaves the system
 - in practice, it acts as both source and sink, or a typed `/dev/null`
 
-That is why `Cascade::create()` is shorthand for `nil -> slot`, and `Cascade::destroy()` is shorthand for `slot -> nil`.
+That is why `Flow::create()` is shorthand for `nil -> slot`, and `Flow::destroy()` is shorthand for `slot -> nil`.
 
 Examples:
 
@@ -116,23 +116,23 @@ $same = $space->slot('wh1.CS.fs');
 $allWarehouseForsale = $space->matchPartial(['loc' => 'wh*', 'stt' => 'fs']);
 ```
 
-## 3. Build Inventories
+## 3. Build Quantity State
 
-`Inventory` represents the quantity state of one subject.
+`QuantityState` represents the quantity state of one subject.
 
 ```php
-use Nandan108\SlotFlow\Inventory;
+use Nandan108\SlotFlow\QuantityState;
 
-$inventory = new Inventory($space, [
+$inventory = new QuantityState($space, [
     ['wh1.FP.fs', 5],
     ['sup.CS.sd', 2],
 ]);
 ```
 
-For ingestion from rows, `Inventory::fromRows()` lets you map arbitrary row shapes into slot tuples:
+For ingestion from rows, `QuantityState::fromRows()` lets you map arbitrary row shapes into slot tuples:
 
 ```php
-$inventory = Inventory::fromRows(
+$inventory = QuantityState::fromRows(
     $space,
     $rows,
     static function (array $row, SlotSpace $space): array {
@@ -147,18 +147,20 @@ $inventory = Inventory::fromRows(
 );
 ```
 
-Each tuple can optionally include a third element: per-inventory slot attributes.
+Each tuple can optionally include a third element: per-state slot attributes.
 
-That metadata is stored in `Inventory`, not in the canonical `SlotSpace`, and is later available to policies through `CascadeContext`.
+That metadata is stored in `QuantityState`, not in the canonical `SlotSpace`, and is later available to policies through `FlowContext`.
 
 This distinction matters in generic modeling:
 
 - slot metadata is structural and shared
-- inventory-side attributes are dynamic and item-specific
+- state-side attributes are dynamic and item-specific
 
-## 4. Define Cascades
+`Inventory` remains available as a deprecated compatibility alias for `QuantityState`.
 
-A cascade is a sequence of movement steps. Each step can define:
+## 4. Define Flows
+
+A flow is a sequence of movement steps. Each step can define:
 
 - a source pattern
 - a destination pattern
@@ -170,10 +172,10 @@ A cascade is a sequence of movement steps. Each step can define:
 Example:
 
 ```php
-use Nandan108\SlotFlow\Cascade;
+use Nandan108\SlotFlow\Flow;
 use Nandan108\SlotFlow\Policies\DimensionPriority;
 
-$reserve = Cascade::define('reserve', static fn (Cascade $c) => $c
+$reserve = Flow::define('reserve', static fn (Flow $c) => $c
     ->move(['stt' => 'fs'], ['stt' => 'res'])
     ->orderBy(new DimensionPriority([
         'loc' => ['wh*', 'sup'],
@@ -185,7 +187,7 @@ $reserve = Cascade::define('reserve', static fn (Cascade $c) => $c
 
 `orderBy()` can take multiple ordering policies. Earlier policies have higher precedence, and later ones act as tie-breakers. This works because SlotFlow applies them in reverse registration order and relies on stable sorting: when a later policy ranks two edges equally, their previous order is preserved.
 
-Useful cascade helpers:
+Useful flow helpers:
 
 - `move($from, $to)`
 - `create($to)` for `nil -> slot`
@@ -193,46 +195,48 @@ Useful cascade helpers:
 - `reverseIf($condition)`
 - `stepByLabeledEdges(...)`
 
-### Reversible cascades
+### Reversible flows
 
-`reverseIf(bool $condition, bool $flipEdges = true)` lets you reuse the same cascade definition in forward or reverse form.
+`reverseIf(bool $condition, bool $flipEdges = true)` lets you reuse the same flow definition in forward or reverse form.
 
-- if `$condition` is `false`, you get a clone of the original cascade
+- if `$condition` is `false`, you get a clone of the original flow
 - if `$condition` is `true`, the step order is reversed
 - if `$flipEdges` is also `true`, each step direction is flipped as well (true reverse operation)
 
 This is useful for rollback-style flows such as releasing reservations, correcting receptions, or undoing previously modeled movement paths.
 
-### Parameterized template cascades
+### Parameterized template flows
 
-Cascades may contain placeholders inside string patterns, using names that match `/[-\w]+/`, for example `{loc}`, `{own}`, or `{from-state}`.
+Flows may contain placeholders inside string patterns, using names that match `/[-\w]+/`, for example `{loc}`, `{own}`, or `{from-state}`.
 
 These placeholders are substituted at execution time through `MovementEngine::execute(..., params: [...])`.
 
-- all placeholders used by the cascade should be provided at execution time
+- all placeholders used by the flow should be provided at execution time
 - placeholders that are not provided are left unchanged
 - an unsubstituted placeholder will usually break slot-pattern expansion or matching because it is not a valid dimension value
 
-This makes parameterized cascades act like reusable movement templates whose concrete routing is fixed only at execution time.
+This makes parameterized flows act like reusable movement templates whose concrete routing is fixed only at execution time.
 
-You can also register cascades directly on a `SlotSpace`:
+You can also register flows directly on a `SlotSpace`:
 
 ```php
-$space->cascade('book', [[['stt' => 'res'], ['stt' => 'sd']]]);
-$book = $space->getCascade('book');
+$space->flow('book', [[['stt' => 'res'], ['stt' => 'sd']]]);
+$book = $space->getFlow('book');
 ```
 
-### Registered cascades vs ad hoc cascades
+### Registered flows vs ad hoc flows
 
 Execution accepts either:
 
-- a `Cascade` object that you built inline or fetched from the space
-- a string cascade name that resolves against the provided `SlotSpace`
+- a `Flow` object that you built inline or fetched from the space
+- a string flow name that resolves against the provided `SlotSpace`
+
+For backward compatibility, the named argument on `MovementEngine::execute()` is still called `cascade`.
 
 Examples:
 
 ```php
-$reserve = Cascade::define('reserve', static fn (Cascade $c) => $c
+$reserve = Flow::define('reserve', static fn (Flow $c) => $c
     ->move(['stt' => 'fs'], ['stt' => 'res']));
 
 (new MovementEngine())->execute(
@@ -242,7 +246,7 @@ $reserve = Cascade::define('reserve', static fn (Cascade $c) => $c
     quantity: 3,
 );
 
-$space->cascade('reserve', static fn (Cascade $c) => $c
+$space->flow('reserve', static fn (Flow $c) => $c
     ->move(['stt' => 'fs'], ['stt' => 'res']));
 
 (new MovementEngine())->execute(
@@ -255,9 +259,11 @@ $space->cascade('reserve', static fn (Cascade $c) => $c
 
 In practice:
 
-- use a `Cascade` object when building or testing a flow inline
-- use a registered cascade name when the flow is part of the slot-space model and should be reused consistently
-- registered names pair naturally with parameterized cascades, because the caller only needs to provide `params` for the current execution
+- use a `Flow` object when building or testing a flow inline
+- use a registered flow name when the flow is part of the slot-space model and should be reused consistently
+- registered names pair naturally with parameterized flows, because the caller only needs to provide `params` for the current execution
+
+`Cascade` remains available as a deprecated compatibility alias for `Flow`.
 
 ## 5. Execute Movements
 
@@ -287,13 +293,13 @@ Execution is greedy by default:
 
 That behavior makes SlotFlow useful for allocation-style problems where "move as much as possible under the defined policy" is the right default.
 
-When using parameterized cascades, `params` is also where placeholder substitution happens before slot patterns are expanded.
+When using parameterized flows, `params` is also where placeholder substitution happens before slot patterns are expanded.
 
 - placeholders are recognized in string patterns using `{name}` syntax
 - names may contain letters, digits, `_`, and `-`
 - missing params are not substituted, so execution should treat them as a modeling error
 
-This same `params` mechanism works when `cascade` is a registered cascade name, which makes named parameterized cascades a good fit for application-level flow templates.
+This same `params` mechanism works when the `cascade` argument receives a registered flow name, which makes named parameterized flows a good fit for application-level flow templates.
 
 ### Exceptions
 
@@ -302,13 +308,13 @@ SlotFlow treats invalid patterns, definitions, and lookups as modeling/API error
 
 ## 6. Batch Execution
 
-Use `InventoryBatch` when you want to execute the same cascade for many subjects.
+Use `QuantityStateBatch` when you want to execute the same flow for many subjects.
 
 ```php
 use Nandan108\SlotFlow\Batch\BatchMovementEngine;
-use Nandan108\SlotFlow\Batch\InventoryBatch;
+use Nandan108\SlotFlow\Batch\QuantityStateBatch;
 
-$batch = InventoryBatch::fromRows(
+$batch = QuantityStateBatch::fromRows(
     space: $space,
     rows: $rows,
     subjectGetter: fn (array $row): string => $row['sku'],
@@ -325,6 +331,8 @@ $batch = (new BatchMovementEngine(new MovementEngine()))->execute(
     cascade: $reserve,
 );
 ```
+
+`InventoryBatch` remains available as a deprecated compatibility alias for `QuantityStateBatch`.
 
 The batch API is designed to handle both common ingestion shapes:
 
@@ -365,10 +373,10 @@ SlotFlow does not persist anything itself. Instead, it gives you helpers for the
 
 ### Inventory Projection
 
-Use `mutations()` when you want net per-slot deltas.
+Use `deltas()` when you want net per-slot deltas.
 
 ```php
-foreach ($result->mutations() as $mutation) {
+foreach ($result->deltas() as $mutation) {
     $slot = $mutation->slot;
     $delta = $mutation->delta;
 }
@@ -377,7 +385,7 @@ foreach ($result->mutations() as $mutation) {
 For batch processing:
 
 ```php
-foreach ($batch->mutations() as $mutation) {
+foreach ($batch->deltas() as $mutation) {
     $subject = $mutation->subject;
     $slot = $mutation->slot;
     $delta = $mutation->delta;
@@ -416,7 +424,7 @@ This is one of the main boundaries of the library. SlotFlow computes the movemen
 
 ## 9. Policy Context And Dynamic Inventory Attributes
 
-Policies receive a `Runtime\CascadeContext`, which exposes:
+Policies receive a `Runtime\FlowContext`, which exposes:
 
 - `space`
 - `edges`

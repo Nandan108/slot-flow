@@ -4,31 +4,31 @@ declare(strict_types=1);
 
 namespace Nandan108\SlotFlow\Internal;
 
-use Nandan108\SlotFlow\Cascade;
 use Nandan108\SlotFlow\Contracts\AllocationPolicyInterface;
 use Nandan108\SlotFlow\Contracts\EdgeFilterPolicyInterface;
 use Nandan108\SlotFlow\Contracts\EdgeOrderingPolicyInterface;
 use Nandan108\SlotFlow\Contracts\QttyConstraintPolicyInterface;
+use Nandan108\SlotFlow\Flow;
 use Nandan108\SlotFlow\MovementEdge;
 use Nandan108\SlotFlow\Runtime\AllocationDecision;
-use Nandan108\SlotFlow\Runtime\CascadeContext;
+use Nandan108\SlotFlow\Runtime\FlowContext;
 use Nandan108\SlotFlow\SlotSpace;
 
 /**
- * Fluent builder for configuring the most recently added cascade step.
+ * Fluent builder for configuring the most recently added flow step.
  *
  * @psalm-import-type TSlotPattern from SlotSpace
  *
  * @api
  */
-final class CascadeStepBuilder
+final class FlowStepBuilder
 {
-    private Cascade $cascade;
-    private CascadeStep $step;
+    private Flow $flow;
+    private FlowStep $step;
 
-    public function __construct(Cascade $cascade, CascadeStep $step)
+    public function __construct(Flow $flow, FlowStep $step)
     {
-        $this->cascade = $cascade;
+        $this->flow = $flow;
         $this->step = $step;
     }
 
@@ -43,7 +43,7 @@ final class CascadeStepBuilder
      * This relies on stable sorting: when a later policy considers two edges equal,
      * their previous order is preserved, so earlier policies keep higher precedence.
      *
-     * @psalm-param EdgeOrderingPolicyInterface|callable(CascadeContext): list<MovementEdge> ...$policies
+     * @psalm-param EdgeOrderingPolicyInterface|callable(FlowContext): list<MovementEdge> ...$policies
      *
      * @api
      */
@@ -59,7 +59,7 @@ final class CascadeStepBuilder
     /**
      * Add a filtering policy for the current step.
      *
-     * @psalm-param EdgeFilterPolicyInterface|callable(CascadeContext): list<MovementEdge> $policy
+     * @psalm-param EdgeFilterPolicyInterface|callable(FlowContext): list<MovementEdge> $policy
      *
      * @api
      */
@@ -73,7 +73,7 @@ final class CascadeStepBuilder
     /**
      * Add a per-edge quantity constraint policy for the current step.
      *
-     * @psalm-param QttyConstraintPolicyInterface|callable(MovementEdge, CascadeContext): mixed $policy
+     * @psalm-param QttyConstraintPolicyInterface|callable(MovementEdge, FlowContext): mixed $policy
      *
      * @api
      */
@@ -87,7 +87,7 @@ final class CascadeStepBuilder
     /**
      * Add an allocation policy for the current step.
      *
-     * @psalm-param AllocationPolicyInterface|callable(CascadeContext): list<AllocationDecision> $policy
+     * @psalm-param AllocationPolicyInterface|callable(FlowContext): list<AllocationDecision> $policy
      *
      * @api
      */
@@ -99,7 +99,7 @@ final class CascadeStepBuilder
     }
 
     /**
-     * Start the next step in the cascade.
+     * Start the next step in the flow.
      *
      * @param array<string|int, string|null>|string|null $from
      * @param array<string|int, string|null>|string|null $to
@@ -109,13 +109,13 @@ final class CascadeStepBuilder
      *
      * @api
      */
-    public function move(string | array | null $from, string | array | null $to): CascadeStepBuilder
+    public function move(string | array | null $from, string | array | null $to): FlowStepBuilder
     {
-        return $this->cascade->move($from, $to);
+        return $this->flow->move($from, $to);
     }
 
     /**
-     * Start the next step in the cascade.
+     * Start the next step in the flow.
      *
      * @param array<string|int, string|null>|string|null $from
      *
@@ -123,13 +123,13 @@ final class CascadeStepBuilder
      *
      * @api
      */
-    public function destroy(string | array | null $from): CascadeStepBuilder
+    public function destroy(string | array | null $from): FlowStepBuilder
     {
-        return $this->cascade->destroy($from);
+        return $this->flow->destroy($from);
     }
 
     /**
-     * Start the next step in the cascade.
+     * Start the next step in the flow.
      *
      * @param array<string|int, string|null>|string|null $to
      *
@@ -137,8 +137,8 @@ final class CascadeStepBuilder
      *
      * @api
      */
-    public function create(string | array | null $to): CascadeStepBuilder
+    public function create(string | array | null $to): FlowStepBuilder
     {
-        return $this->cascade->create($to);
+        return $this->flow->create($to);
     }
 }
