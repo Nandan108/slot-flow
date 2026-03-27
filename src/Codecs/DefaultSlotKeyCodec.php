@@ -7,6 +7,7 @@ namespace Nandan108\SlotFlow\Codecs;
 use Nandan108\SlotFlow\Contracts\SlotCodec;
 use Nandan108\SlotFlow\Exceptions\SlotFlowInvalidArgumentException;
 use Nandan108\SlotFlow\SlotSpace;
+use Nandan108\SlotFlow\Time\TimeAxis;
 
 /**
  * Built-in dot-separated codec with wildcard and alternative support.
@@ -30,6 +31,7 @@ class DefaultSlotKeyCodec implements SlotCodec
 
     public function __construct(
         private SlotSpace $space,
+        public readonly ?TimeAxis $timeAxis = null,
     ) {
     }
 

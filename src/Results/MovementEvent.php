@@ -25,6 +25,7 @@ final class MovementEvent
         public readonly int | float $quantity,
         public readonly int | float | null $initialFrom,
         public readonly int | float | null $initialTo,
+        public readonly ?string $scheduleStepId = null,
     ) {
     }
 
@@ -92,6 +93,10 @@ final class MovementEvent
      */
     public function ledgerEntry(array $context = []): LedgerEntry
     {
+        if (null !== $this->scheduleStepId) {
+            $context += ['schedule_step_id' => $this->scheduleStepId];
+        }
+
         return new LedgerEntry(
             edge: $this->edge,
             quantity: $this->quantity,

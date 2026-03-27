@@ -115,6 +115,16 @@ final class FlowStepBuilder
     }
 
     /**
+     * Add a step that resolves its candidate edges from one or more labeled edge rules.
+     *
+     * @param non-empty-string ...$edgeLabels
+     */
+    public function stepByLabeledEdges(string ...$edgeLabels): FlowStepBuilder
+    {
+        return $this->flow->stepByLabeledEdges(...$edgeLabels);
+    }
+
+    /**
      * Start the next step in the flow.
      *
      * @param array<string|int, string|null>|string|null $from

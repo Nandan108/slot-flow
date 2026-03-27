@@ -12,8 +12,8 @@ use Nandan108\SlotFlow\Codecs\DefaultSlotKeyCodec;
 use Nandan108\SlotFlow\Contracts\AllocationPolicyInterface;
 use Nandan108\SlotFlow\Contracts\EdgeFilterPolicyInterface;
 use Nandan108\SlotFlow\Contracts\EdgeOrderingPolicyInterface;
+use Nandan108\SlotFlow\Contracts\ExecutionSolverInterface;
 use Nandan108\SlotFlow\Contracts\QttyConstraintPolicyInterface;
-use Nandan108\SlotFlow\Contracts\SolverInterface;
 use Nandan108\SlotFlow\Exceptions\SlotFlowExceptionInterface;
 use Nandan108\SlotFlow\Exceptions\SlotFlowInvalidArgumentException;
 use Nandan108\SlotFlow\Exceptions\SlotFlowLogicException;
@@ -942,7 +942,7 @@ final class LibraryCoverageTest extends TestCase
         $state = new QuantityState($space, [['foo.fs', 3]]);
         $flow = Flow::define('noop', static fn (Flow $f) => $f);
 
-        $engine = new MovementEngine(new class implements SolverInterface {
+        $engine = new MovementEngine(new class implements ExecutionSolverInterface {
             public function execute(
                 QuantityState $state,
                 SlotSpace $space,

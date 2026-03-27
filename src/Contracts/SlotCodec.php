@@ -6,6 +6,7 @@ namespace Nandan108\SlotFlow\Contracts;
 
 use Nandan108\SlotFlow\Exceptions\SlotFlowInvalidArgumentException;
 use Nandan108\SlotFlow\SlotSpace;
+use Nandan108\SlotFlow\Time\TimeAxis;
 
 /**
  * Defines how slots are serialized, deserialized, and pattern-matched.
@@ -23,7 +24,7 @@ interface SlotCodec
      * Bind the codec instance to one slot space.
      */
     /** @psalm-suppress PossiblyUnusedMethod */
-    public function __construct(SlotSpace $space);
+    public function __construct(SlotSpace $space, ?TimeAxis $timeAxis = null);
 
     /**
      * Return true when the given value should be treated as a match-all wildcard.

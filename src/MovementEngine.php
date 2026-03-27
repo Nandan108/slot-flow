@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Nandan108\SlotFlow;
 
-use Nandan108\SlotFlow\Contracts\SolverInterface;
+use Nandan108\SlotFlow\Contracts\ExecutionSolverInterface;
 use Nandan108\SlotFlow\Solvers\GreedyFlowSolver;
 
 /**
@@ -15,7 +15,7 @@ use Nandan108\SlotFlow\Solvers\GreedyFlowSolver;
 final class MovementEngine
 {
     public function __construct(
-        private readonly SolverInterface $solver = new GreedyFlowSolver(),
+        private readonly ExecutionSolverInterface $solver = new GreedyFlowSolver(),
     ) {
     }
 

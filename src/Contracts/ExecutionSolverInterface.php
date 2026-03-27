@@ -14,7 +14,7 @@ use Nandan108\SlotFlow\SlotSpace;
  *
  * @api
  */
-interface SolverInterface
+interface ExecutionSolverInterface
 {
     /**
      * @param array<mixed>               $appContext

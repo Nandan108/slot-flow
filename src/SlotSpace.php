@@ -11,6 +11,7 @@ use Nandan108\SlotFlow\Internal\SlotPattern;
 use Nandan108\SlotFlow\Rules\EdgeRule;
 use Nandan108\SlotFlow\Rules\RuleSet;
 use Nandan108\SlotFlow\Rules\SlotRule;
+use Nandan108\SlotFlow\Time\TimeAxis;
 
 /**
  * Defines the slot space, its dimensions, the slots that exist within it, and the edges and flows that operate on it.
@@ -46,6 +47,7 @@ final class SlotSpace
     private array $dimensionNames = [];
 
     public SlotCodec $codec;
+    public readonly ?TimeAxis $timeAxis;
 
     /**
      * @var array<non-empty-string, Slot>
@@ -83,29 +85,38 @@ final class SlotSpace
 
     /**
      * @param array<non-empty-string, list<non-empty-string>> $dimensions
+     * @param TimeAxis|?class-string<SlotCodec>               $timeAxis
      * @param ?class-string<SlotCodec>                        $codecClass
      *
      * @psalm-param array<TDimensionName, list<TDimensionValue>> $dimensions
      */
     public static function define(
         array $dimensions,
+        TimeAxis | string | null $timeAxis = null,
         ?string $codecClass = null,
     ): self {
-        return new self($dimensions, $codecClass);
+        return new self($dimensions, $timeAxis, $codecClass);
     }
 
     /**
      * @param array<non-empty-string, list<non-empty-string>> $dimensions
+     * @param TimeAxis|?class-string<SlotCodec>               $timeAxis
      * @param ?class-string<SlotCodec>                        $codecClass
      *
      * @psalm-param array<TDimensionName, list<TDimensionValue>> $dimensions
      */
     public function __construct(
         array $dimensions,
+        TimeAxis | string | null $timeAxis = null,
         ?string $codecClass = null,
     ) {
+        $resolvedTimeAxis = $timeAxis instanceof TimeAxis ? $timeAxis : null;
+        $resolvedCodecClass = is_string($timeAxis) ? $timeAxis : $codecClass;
+
+        $this->timeAxis = $resolvedTimeAxis;
+
         /** @psalm-suppress UnsafeInstantiation */
-        $this->codec = new ($codecClass ?? DefaultSlotKeyCodec::class)($this);
+        $this->codec = new ($resolvedCodecClass ?? DefaultSlotKeyCodec::class)($this, $this->timeAxis);
 
         $this->codec->initialDimensionValueValidation($dimensions);
 
@@ -378,14 +389,18 @@ final class SlotSpace
      *
      * @see SlotPattern::from for more flexible pattern matching with support for wildcards and missing values.
      *
-     * @param string|array<string>|null $keyOrValues
+     * @param Slot|string|array<string>|null $keyOrValues
      *
-     * @psalm-param TSlotPattern $keyOrValues
+     * @psalm-param Slot|TSlotPattern $keyOrValues
      *
      * @return ?Slot Returns the SlotKey if found, or null if no matching slot exists
      */
-    public function trySlot(array | string | null $keyOrValues, bool $throwOnInvalidDimensionValues = false): ?Slot
+    public function trySlot(Slot | array | string | null $keyOrValues, bool $throwOnInvalidDimensionValues = false): ?Slot
     {
+        if ($keyOrValues instanceof Slot) {
+            return $keyOrValues;
+        }
+
         if (null === $keyOrValues || $this->codec->nilKey() === $keyOrValues) {
             return $this->nilSlot();
         }
@@ -440,13 +455,13 @@ final class SlotSpace
      *
      * @see SlotPattern::from for more flexible pattern matching with support for wildcards and missing values.
      *
-     * @param string|array<string>|null $keyOrValues
+     * @param Slot|string|array<string>|null $keyOrValues
      *
-     * @psalm-param TSlotPattern $keyOrValues
+     * @psalm-param Slot|TSlotPattern $keyOrValues
      *
      * @throws SlotFlowInvalidArgumentException if the resulting key does not correspond to any defined slot
      */
-    public function slot(array | string | null $keyOrValues): Slot
+    public function slot(Slot | array | string | null $keyOrValues): Slot
     {
         $slot = $this->trySlot($keyOrValues, true);
 

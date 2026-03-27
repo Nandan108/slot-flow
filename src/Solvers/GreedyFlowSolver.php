@@ -7,8 +7,8 @@ namespace Nandan108\SlotFlow\Solvers;
 use Nandan108\SlotFlow\Contracts\AllocationPolicyInterface;
 use Nandan108\SlotFlow\Contracts\EdgeFilterPolicyInterface;
 use Nandan108\SlotFlow\Contracts\EdgeOrderingPolicyInterface;
+use Nandan108\SlotFlow\Contracts\ExecutionSolverInterface;
 use Nandan108\SlotFlow\Contracts\QttyConstraintPolicyInterface;
-use Nandan108\SlotFlow\Contracts\SolverInterface;
 use Nandan108\SlotFlow\Flow;
 use Nandan108\SlotFlow\Internal\FlowStep;
 use Nandan108\SlotFlow\MovementEdge;
@@ -26,7 +26,7 @@ use Nandan108\SlotFlow\SlotSpace;
  *
  * @api
  */
-final class GreedyFlowSolver implements SolverInterface
+final class GreedyFlowSolver implements ExecutionSolverInterface
 {
     /**
      * @param array<mixed>               $appContext
