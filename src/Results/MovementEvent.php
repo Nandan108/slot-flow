@@ -9,23 +9,15 @@ use Nandan108\SlotFlow\MovementEdge;
 /**
  * One applied movement with before-state snapshots for source and destination.
  *
- * @template-covariant TQtty of int|float
- *
  * @api
  */
 final class MovementEvent
 {
-    /**
-     * @psalm-param TQtty  $quantity
-     * @psalm-param ?TQtty $initialFrom
-     * @psalm-param ?TQtty $initialTo
-     **/
     public function __construct(
         public readonly MovementEdge $edge,
         public readonly int | float $quantity,
         public readonly int | float | null $initialFrom,
         public readonly int | float | null $initialTo,
-        public readonly ?string $scheduleStepId = null,
     ) {
     }
 
@@ -93,10 +85,6 @@ final class MovementEvent
      */
     public function ledgerEntry(array $context = []): LedgerEntry
     {
-        if (null !== $this->scheduleStepId) {
-            $context += ['schedule_step_id' => $this->scheduleStepId];
-        }
-
         return new LedgerEntry(
             edge: $this->edge,
             quantity: $this->quantity,

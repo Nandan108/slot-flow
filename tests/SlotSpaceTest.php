@@ -7,7 +7,6 @@ namespace Tests;
 use Nandan108\SlotFlow\Codecs\DefaultSlotKeyCodec;
 use Nandan108\SlotFlow\Flow;
 use Nandan108\SlotFlow\Internal\SlotPattern;
-use Nandan108\SlotFlow\Internal\SlotSpaceBuilder;
 use Nandan108\SlotFlow\MovementEdge;
 use Nandan108\SlotFlow\MovementEngine;
 use Nandan108\SlotFlow\QuantityState;
@@ -313,25 +312,10 @@ final class SlotSpaceTest extends TestCase
         self::assertCount(1, $space->flows['book']->steps());
     }
 
-    public function testBuilderCompilesSlotAndEdgeRules(): void
-    {
-        $space = (new SlotSpaceBuilder($this->makeWarehouseSpace()))
-            ->slotRules([SlotRule::deny('bar.*')])
-            ->edgeRules([EdgeRule::allowLabeled('advance', 'foo.fs', 'foo.sd')])
-            ->compile();
-
-        self::assertSame(['foo.sd'], array_keys($space->getEdgesFrom($space->slot('foo.fs'))));
-
-        $this->expectException(\InvalidArgumentException::class);
-        $this->expectExceptionMessage('Unknown slot: "bar.fs"');
-        $space->slot('bar.fs');
-    }
-
     public function testMatchPartialReturnsCorrectSubsetOfPrunedSpace(): void
     {
-        $space = (new SlotSpaceBuilder($this->makeWarehouseSpace()))
-            ->slotRules([SlotRule::deny('bar.sd')])
-            ->compile();
+        $space = $this->makeWarehouseSpace()
+            ->slotRules([SlotRule::deny('bar.sd')]);
 
         $barSpace = $space->matchPartial(['loc' => 'bar']);
         self::assertSame(['bar.fs'], $this->slotKeys($barSpace));
@@ -352,6 +336,26 @@ final class SlotSpaceTest extends TestCase
         self::assertFalse($pattern->matches($space->nilSlot()));
     }
 
+    public function testSlotPatternPartialOverridePreservesInheritedPartials(): void
+    {
+        $space = $this->makeWarehouseSpace();
+        $wildcardOverride = $this->slotKeys(SlotPattern::from(['loc' => '*'], $space)->partialOverride(['stt' => 'fs'])->expand());
+        sort($wildcardOverride);
+
+        self::assertSame(
+            ['bar.fs', 'faz.fs', 'foo.fs'],
+            $wildcardOverride,
+        );
+        self::assertSame(
+            ['foo.fs', 'foo.sd'],
+            $this->slotKeys(array_values(SlotPattern::from(['loc' => 'foo'], $space)->partialOverride(null)->expand())),
+        );
+        self::assertSame(
+            ['foo.fs'],
+            $this->slotKeys(array_values(SlotPattern::from(['loc' => 'foo'], $space)->partialOverride(['stt' => 'fs'])->expand())),
+        );
+    }
+
     private function makeWarehouseSpace(): SlotSpace
     {
         return SlotSpace::define([
@@ -361,12 +365,12 @@ final class SlotSpaceTest extends TestCase
     }
 
     /**
-     * @param list<\Nandan108\SlotFlow\Slot> $slots
+     * @param array<\Nandan108\SlotFlow\Slot> $slots
      *
      * @return list<string>
      */
     private function slotKeys(array $slots): array
     {
-        return array_map(static fn ($slot): string => $slot->key, $slots);
+        return array_values(array_map(static fn ($slot): string => $slot->key, $slots));
     }
 }

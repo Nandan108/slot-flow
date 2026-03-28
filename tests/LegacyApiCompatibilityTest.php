@@ -109,7 +109,6 @@ final class LegacyApiCompatibilityTest extends TestCase
             ],
             /** @param list<TLegacyRow> $rows */
             quantityGetter: static fn (array $rows): int => $rows[0]['qty'],
-            subjectIdGetter: null,
         );
 
         $mutation = new InventoryMutation($space->slot('foo.fs'), 2);

@@ -20,7 +20,6 @@ final class ScheduleMilestone
         public readonly string $name,
         public readonly TimedSlot $slot,
         public readonly int | float $quantity,
-        public readonly ?string $scheduleStepId = null,
     ) {
     }
 }

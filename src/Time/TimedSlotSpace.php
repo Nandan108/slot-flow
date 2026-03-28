@@ -19,6 +19,7 @@ final class TimedSlotSpace
 {
     /** @var array<string, TimedSlot> */
     private array $slots = [];
+    private readonly ?TimedDurationResolverInterface $durationResolver;
 
     /**
      * Create one timed view over a base slot space and a discrete time axis.
@@ -26,15 +27,27 @@ final class TimedSlotSpace
     public function __construct(
         public readonly SlotSpace $baseSpace,
         public readonly TimeAxis $axis,
+        ?callable $durationResolver = null,
     ) {
+        $this->durationResolver = null === $durationResolver
+            ? null
+            : self::normalizeDurationResolver($durationResolver);
     }
 
     /**
      * Build a timed view over one base slot space, defaulting to the space's declared time axis.
      */
-    public static function fromBaseSpace(SlotSpace $baseSpace, ?TimeAxis $axis = null): self
-    {
+    public static function fromBaseSpace(
+        SlotSpace $baseSpace,
+        ?TimeAxis $axis = null,
+        ?callable $durationResolver = null,
+    ): self {
         $axis ??= $baseSpace->timeAxis;
+        if (null === $durationResolver) {
+            $defaultDurationResolver = $baseSpace->getDurationResolver();
+            $durationResolver = null === $defaultDurationResolver ? null : $defaultDurationResolver->resolve(...);
+        }
+
         if (null === $axis) {
             throw new SlotFlowInvalidArgumentException(
                 'Timed slot space requires a TimeAxis, either passed explicitly or declared on the base SlotSpace.',
@@ -42,7 +55,7 @@ final class TimedSlotSpace
             );
         }
 
-        return new self($baseSpace, $axis);
+        return new self($baseSpace, $axis, $durationResolver);
     }
 
     /**
@@ -126,6 +139,12 @@ final class TimedSlotSpace
     public function getEdgesFrom(TimedSlot $from): array
     {
         $edges = [];
+        $baseEdges = $from->slot->isNil()
+            ? array_map(
+                fn (Slot $to): MovementEdge => new MovementEdge($from->slot, $to),
+                $this->baseSpace->matchPartial([]),
+            )
+            : $from->slot->outgoingEdges();
 
         if ($from->timeIndex < $this->axis->horizon) {
             $edges[] = new TimedMovementEdge(
@@ -137,8 +156,8 @@ final class TimedSlotSpace
             );
         }
 
-        foreach ($from->slot->outgoingEdges() as $edge) {
-            $duration = $this->duration($edge);
+        foreach ($baseEdges as $edge) {
+            $duration = $this->duration($edge, $from);
             $arrival = $from->timeIndex + $duration;
             if ($arrival > $this->axis->horizon) {
                 continue;
@@ -172,19 +191,58 @@ final class TimedSlotSpace
     }
 
     /**
-     * Resolve one base-edge duration from edge metadata into canonical bucket count.
+     * Resolve one base-edge duration into canonical bucket count.
      */
-    private function duration(MovementEdge $edge): int
+    private function duration(MovementEdge $edge, TimedSlot $from): int
     {
-        $duration = $edge->attributes['duration'] ?? 0;
+        $context = new TimedDurationContext($this, $this->axis, $from, $edge);
+        $duration = null !== $this->durationResolver
+            ? $this->durationResolver->resolve($edge, $context)
+            : $this->defaultDurationValue($edge);
 
-        return match (true) {
-            is_int($duration)    => $duration,
-            is_string($duration) => $this->axis->parse($duration),
-            default              => throw new SlotFlowInvalidArgumentException(
-                'Timed movement edge duration must be an int or time expression string.',
-                ['edge' => (string) $edge, 'duration' => $duration],
-            ),
+        return is_int($duration) ? $duration : $this->axis->parse($duration);
+    }
+
+    private static function normalizeDurationResolver(callable $durationResolver): TimedDurationResolverInterface
+    {
+        return new class(\Closure::fromCallable($durationResolver)) implements TimedDurationResolverInterface {
+            private readonly \Closure $resolver;
+
+            public function __construct(\Closure $resolver)
+            {
+                $this->resolver = $resolver;
+            }
+
+            #[\Override]
+            public function resolve(MovementEdge $edge, TimedDurationContext $context): int | string
+            {
+                /** @psalm-var mixed $duration */
+                $duration = ($this->resolver)($edge, $context);
+
+                if (is_int($duration) || is_string($duration)) {
+                    return $duration;
+                }
+
+                throw new SlotFlowInvalidArgumentException(
+                    'Timed movement edge duration must be an int or time expression string.',
+                    ['edge' => (string) $edge, 'duration' => $duration],
+                );
+            }
         };
+    }
+
+    private function defaultDurationValue(MovementEdge $edge): int | string
+    {
+        /** @psalm-var mixed $duration */
+        $duration = $edge->attributes['duration'] ?? $edge->from->attributes['duration'] ?? 0;
+
+        if (is_int($duration) || is_string($duration)) {
+            return $duration;
+        }
+
+        throw new SlotFlowInvalidArgumentException(
+            'Timed movement edge duration must be an int or time expression string.',
+            ['edge' => (string) $edge, 'duration' => $duration],
+        );
     }
 }

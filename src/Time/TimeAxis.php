@@ -26,18 +26,28 @@ final class TimeAxis
     /** @var array<non-empty-string, int> */
     public readonly array $aliases;
 
-    /** @var array<string, int> */
+    /** @var array<non-empty-string, int> */
     public readonly array $shorthandMultipliers;
+
+    /** @var array<non-empty-string, int> */
+    public readonly array $allMultipliers;
+
+    /** @var list<non-empty-string> */
+    public readonly array $humanKeyParts;
 
     /**
      * Create one discrete time axis and validate its bucket and alias shorthand scheme.
      *
-     * @param array<non-empty-string, int> $aliases map of human-friendly alias => bucket multiplier
+     * @param string                       $bucket        canonical name of the base time unit, such as "hour". First letter is used as the default shorthand, such as "h".
+     * @param int                          $horizon       maximum time index allowed on this axis (inclusive)
+     * @param array<non-empty-string, int> $aliases       map of human-friendly alias => bucket multiplier. Value may be suffixed with a shorthand letter, such as `day: d` to specify the alias shorthand explicitly (otherwise derived from first letter of alias).
+     * @param list<non-empty-string>|null  $humanKeyParts ordered human-key shorthands such as ['d', 'h']
      */
     public function __construct(
         string $bucket,
         public readonly int $horizon,
         array $aliases = [],
+        ?array $humanKeyParts = null,
     ) {
         if ($horizon < 0) {
             throw new SlotFlowInvalidArgumentException(
@@ -46,39 +56,41 @@ final class TimeAxis
             );
         }
 
-        if (!preg_match('/^[a-z]+$/i', $bucket)) {
-            throw new SlotFlowInvalidArgumentException(
-                'Time bucket name must contain letters only.',
-                ['bucket' => $bucket],
-            );
-        }
+        /** @return array{non-empty-string, non-empty-string} */
+        $parseUnit = function (string $type, string $input): array {
+            if (!preg_match('/^([a-z]+)(?::\s*([a-z]+))?$/i', $input, $matches, PREG_UNMATCHED_AS_NULL)) {
+                throw new SlotFlowInvalidArgumentException(
+                    $type.' name must contain letters only, and an optional ":[a-z]+" suffix for the shorthand.',
+                    ['input' => $input],
+                );
+            }
+            /** @var non-empty-string $bucket */
+            $bucket = $matches[1];
+            /** @var non-empty-string $shorthand */
+            $shorthand = $matches[2] ?? $bucket[0];
 
-        $bucket = strtolower($bucket);
-        /** @var non-empty-string $bucket */
-        $this->bucket = $bucket;
-        $this->bucketShorthand = $bucket[0];
+            return [strtolower($bucket), $shorthand];
+        };
+
+        [$this->bucket, $this->bucketShorthand] = $parseUnit('Time bucket', $bucket);
+
         /** @var array<non-empty-string, int> $normalizedAliases */
         $normalizedAliases = [];
         /** @var array<non-empty-string, int> $shorthandMultipliers */
         $shorthandMultipliers = [$this->bucketShorthand => 1];
 
         foreach ($aliases as $alias => $multiplier) {
-            if (!preg_match('/^[a-z]+$/i', $alias)) {
-                throw new SlotFlowInvalidArgumentException(
-                    'Time alias names must contain letters only.',
-                    ['alias' => $alias],
-                );
-            }
+            [$alias, $shorthand] = $parseUnit('Time alias', $alias);
 
-            if ($multiplier <= 0) {
+            /** @psalm-suppress DocblockTypeContradiction */
+            /** @var array{non-empty-string, string} $matches */
+            if (!is_int($multiplier) || $multiplier <= 0) {
                 throw new SlotFlowInvalidArgumentException(
-                    'Time alias multipliers must be positive.',
+                    'Time alias multipliers must be positive integers.',
                     ['alias' => $alias, 'multiplier' => $multiplier],
                 );
             }
 
-            $alias = strtolower($alias);
-            $shorthand = $alias[0];
             if (isset($shorthandMultipliers[$shorthand])) {
                 throw new SlotFlowInvalidArgumentException(
                     'Time bucket and aliases must have unique first letters.',
@@ -92,16 +104,25 @@ final class TimeAxis
 
         $this->aliases = $normalizedAliases;
         $this->shorthandMultipliers = $shorthandMultipliers;
+
+        $this->allMultipliers = [
+            $this->bucket          => 1,
+            $this->bucketShorthand => 1,
+            ...$normalizedAliases,
+            ...$shorthandMultipliers,
+        ];
+        $this->humanKeyParts = $this->normalizeHumanKeyParts($humanKeyParts);
     }
 
     /**
      * Build one time axis from a canonical bucket name, horizon, and optional aliases.
      *
      * @param array<non-empty-string, int> $aliases
+     * @param list<non-empty-string>|null  $humanKeyParts
      */
-    public static function define(string $bucket, int $horizon, array $aliases = []): self
+    public static function define(string $bucket, int $horizon, array $aliases = [], ?array $humanKeyParts = null): self
     {
-        return new self($bucket, $horizon, $aliases);
+        return new self($bucket, $horizon, $aliases, $humanKeyParts);
     }
 
     /**
@@ -117,6 +138,39 @@ final class TimeAxis
         }
 
         return $this->bucketShorthand.$index;
+    }
+
+    /**
+     * Return one human-readable time key, preferring larger configured units first.
+     */
+    public function humanKey(int | string $value): string
+    {
+        $index = $this->parse($value);
+        if (0 === $index) {
+            return $this->key(0);
+        }
+
+        $remaining = $index;
+        $parts = [];
+
+        foreach ($this->humanKeyParts as $part) {
+            $multiplier = $this->shorthandMultipliers[$part];
+            if ($multiplier > $remaining) {
+                continue;
+            }
+
+            $count = intdiv($remaining, $multiplier);
+            if ($count > 0) {
+                $parts[] = $count.$part;
+                $remaining -= $count * $multiplier;
+            }
+        }
+
+        if ($remaining > 0) {
+            $parts[] = $remaining.$this->bucketShorthand;
+        }
+
+        return implode('', $parts);
     }
 
     /**
@@ -148,38 +202,29 @@ final class TimeAxis
             return (int) $value;
         }
 
-        preg_match_all('/([a-z]+)(\d+)/i', $value, $matches, \PREG_SET_ORDER);
-        if ([] === $matches) {
-            throw new SlotFlowInvalidArgumentException(
-                'Invalid time expression.',
-                ['value' => $value],
-            );
-        }
+        $value = strtolower($value);
+        [$uRe,$cRe] = ['(?<unit>[a-z]+)', "(?<count>\d+)"];
+        $formatRE = '(?:'.($value[0] >= 'a' ? "$uRe$cRe" : "$cRe$uRe").')';
 
         $consumed = '';
         $total = 0;
-
-        foreach ($matches as $match) {
-            $consumed .= $match[0];
-            $unit = strtolower($match[1]);
-            $amount = (int) $match[2];
-            $multiplier = match ($unit) {
-                $this->bucketShorthand => 1,
-                default                => $this->shorthandMultipliers[$unit] ?? null,
-            };
-
+        preg_match_all("/$formatRE/i", $value, $matches, \PREG_SET_ORDER);
+        // ** @var non-empty-list<array<array-key, string>> $matches */
+        foreach ($matches as [0 => $matched, 'unit' => $unit, 'count' => $count]) {
+            $consumed .= $matched;
+            $unit = strtolower($unit);
+            $multiplier = $this->allMultipliers[$unit] ?? null;
             if (null === $multiplier) {
                 throw new SlotFlowInvalidArgumentException(
                     'Unknown time unit in expression.',
                     [
                         'value'       => $value,
                         'unit'        => $unit,
-                        'known_units' => array_keys($this->shorthandMultipliers + [$this->bucketShorthand => 1]),
+                        'known_units' => array_keys($this->allMultipliers),
                     ],
                 );
             }
-
-            $total += $amount * $multiplier;
+            $total += (int) $count * $multiplier;
         }
 
         if ($consumed !== $value) {
@@ -206,5 +251,49 @@ final class TimeAxis
     public function contains(int | string $value): bool
     {
         return $this->parse($value) <= $this->horizon;
+    }
+
+    /**
+     * @param list<non-empty-string>|null $humanKeyParts
+     *
+     * @return list<non-empty-string>
+     */
+    private function normalizeHumanKeyParts(?array $humanKeyParts): array
+    {
+        if (null === $humanKeyParts) {
+            $parts = $this->shorthandMultipliers;
+            arsort($parts);
+
+            return array_keys($parts);
+        }
+
+        $normalized = [];
+        foreach ($humanKeyParts as $part) {
+            $part = strtolower($part);
+            if (!isset($this->shorthandMultipliers[$part])) {
+                throw new SlotFlowInvalidArgumentException(
+                    'Human key parts must reference known time shorthands.',
+                    ['part' => $part, 'known_parts' => array_keys($this->shorthandMultipliers)],
+                );
+            }
+
+            if (in_array($part, $normalized, true)) {
+                throw new SlotFlowInvalidArgumentException(
+                    'Human key parts must be unique.',
+                    ['part' => $part, 'human_key_parts' => $humanKeyParts],
+                );
+            }
+
+            $normalized[] = $part;
+        }
+
+        if ([] === $normalized) {
+            throw new SlotFlowInvalidArgumentException(
+                'Human key parts cannot be empty.',
+                [],
+            );
+        }
+
+        return $normalized;
     }
 }

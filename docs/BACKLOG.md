@@ -18,4 +18,7 @@
 - [012] Refactor library exceptions into a unified hierarchy
 - [009] Set up automated API docs with phpDocumentor
 - [012] Set up CI
+- [015] TimedSlotSpace, TimeAxis, TimedSlot
+- [016] Solver specified at 1. engine-level default, 2. optional flow-level default, 3. per-execution override.
+- [017] Implement EarliestArrivalSolver
 

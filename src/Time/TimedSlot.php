@@ -60,6 +60,14 @@ final class TimedSlot
     }
 
     /**
+     * Return one human-readable `slot@time` serialization for display.
+     */
+    public function humanKey(): string
+    {
+        return $this->slot->key.'@'.$this->space->axis->humanKey($this->timeIndex);
+    }
+
+    /**
      * Return the canonical `slot@time` serialization for this timed slot.
      */
     public function __toString(): string

@@ -46,6 +46,46 @@ final class SlotPattern
     }
 
     /**
+     * Overlay another slot pattern onto each partial in this pattern.
+     *
+     * For each base partial and each expanded override partial, dimensions present
+     * in the override replace the corresponding base dimensions, while omitted
+     * dimensions continue to inherit from the base partial.
+     *
+     * Special cases:
+     * - if this pattern is the nil pattern, the result is exactly the override pattern
+     * - if the override pattern is the nil pattern, the result is unchanged
+     *
+     * Duplicate merged partials are collapsed before returning the new pattern.
+     *
+     * @psalm-param TSlotPattern $overridePattern
+     */
+    public function partialOverride(string | array | null $overridePattern): self
+    {
+        $overrides = $this->space->expandSlotPattern($overridePattern);
+        if ([null] === $this->partials) {
+            return new self($overrides, $this->space);
+        }
+
+        if ([null] === $overrides) {
+            return new self($this->partials, $this->space);
+        }
+
+        $newPartials = [];
+
+        /** @var TSlotPartial $partial */
+        foreach ($this->partials as $partial) {
+            /** @var TSlotPartial $override */
+            foreach ($overrides as $override) {
+                $newPartial = $override + $partial;
+                $newPartials[$this->space->codec->serialize($newPartial)] = $newPartial;
+            }
+        }
+
+        return new self(array_values($newPartials), $this->space);
+    }
+
+    /**
      * Get all slots in the SlotSpace that match the pattern.
      *
      * @return array<non-empty-string, Slot>

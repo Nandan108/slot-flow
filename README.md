@@ -160,6 +160,7 @@ The main result shapes are:
 
 - `MovementResult::deltas()` for net per-slot current-state deltas
 - `MovementResult::ledgerEntries($context)` for append-only movement records
+- `MovementSchedule::$steps`, `MovementSchedule::$milestones`, and `MovementSchedule::deltas()` for time-based planning output
 - `QuantityStateBatch::deltas()` and `QuantityStateBatch::ledgerEntries($context)` for the same outputs across many subjects
 
 ## Terminology
@@ -196,8 +197,7 @@ That system handled:
 - partial shipment tracking
 - movement logging (ledger)
 
-Over time, the limitations of a tightly coupled implementation became clear:
-movement rules, state representation, and execution logic were all intertwined.
+Over time, the limitations of a tightly coupled implementation became clear: movement rules, state representation, and execution logic were all intertwined.
 
 SlotFlow is an extraction of its core ideas as a **generic, composable flow engine**.
 

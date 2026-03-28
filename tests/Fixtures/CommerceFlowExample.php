@@ -168,8 +168,6 @@ final class CommerceFlowExample
             slotRowGetter: $slotRowGetter,
             /** @param list<TRow> $rows */
             quantityGetter: fn (array $rows) => $rows[array_key_first($rows) ?? 0]['mvQtty'],
-            /** @param VariantType $variant */
-            subjectIdGetter: fn (string $variant): string => $variant,
         );
     }
 

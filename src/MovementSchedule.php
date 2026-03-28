@@ -31,7 +31,7 @@ final class MovementSchedule
      */
     public function isComplete(): bool
     {
-        return 0 === $this->remaining;
+        return 0.0 === (float) $this->remaining;
     }
 
     /**

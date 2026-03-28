@@ -6,10 +6,13 @@ namespace Tests;
 
 use Nandan108\SlotFlow\Codecs\DefaultSlotKeyCodec;
 use Nandan108\SlotFlow\Exceptions\SlotFlowInvalidArgumentException;
+use Nandan108\SlotFlow\MovementEdge;
 use Nandan108\SlotFlow\QuantityState;
 use Nandan108\SlotFlow\Rules\EdgeRule;
+use Nandan108\SlotFlow\Rules\SlotRule;
 use Nandan108\SlotFlow\SlotSpace;
 use Nandan108\SlotFlow\Time\TimeAxis;
+use Nandan108\SlotFlow\Time\TimedDurationContext;
 use Nandan108\SlotFlow\Time\TimedMovementEdge;
 use Nandan108\SlotFlow\Time\TimedQuantityState;
 use Nandan108\SlotFlow\Time\TimedSlotSpace;
@@ -26,17 +29,24 @@ final class TimeLayerTest extends TestCase
         $axis = TimeAxis::define(
             bucket: 'hour',
             horizon: 200,
-            aliases: ['shift' => 8, 'day' => 24],
+            aliases: ['shift:x' => 8, 'day' => 24],
         );
 
-        self::assertSame('h0', $axis->key(0));
-        self::assertSame(0, $axis->parse(0));
+        self::assertSame(27, $axis->parse('1d3h'));
         self::assertSame(27, $axis->parse('d1h3'));
-        self::assertSame(80, $axis->parse('d3s1'));
-        self::assertSame('h80', $axis->normalize('d3s1'));
+        self::assertSame(27, $axis->parse('day1hour3'));
+        self::assertSame(44, $axis->parse('1hour1day3h1shift1x'));
+        self::assertSame(48, $axis->parse('x3day1'));
+
+        self::assertSame('h0', $axis->key(0));
+        self::assertSame('1d3h', $axis->humanKey(27));
+        self::assertSame('3d1x', $axis->humanKey(80));
+        self::assertSame(0, $axis->parse(0));
+        self::assertSame(80, $axis->parse('d3x1'));
+        self::assertSame('h80', $axis->normalize('d3x1'));
         self::assertSame('hour', $axis->bucket);
         self::assertSame(['shift' => 8, 'day' => 24], $axis->aliases);
-        self::assertTrue($axis->contains('d3s1'));
+        self::assertTrue($axis->contains('d3x1'));
         self::assertFalse($axis->contains('d9'));
     }
 
@@ -56,6 +66,53 @@ final class TimeLayerTest extends TestCase
         $axis->parse(-1);
     }
 
+    public function testTimeAxisRejectsInvalidBucketAndHumanKeyConfigurations(): void
+    {
+        try {
+            new TimeAxis('hour-1', 24);
+            self::fail('Expected invalid bucket rejection.');
+        } catch (SlotFlowInvalidArgumentException $e) {
+            self::assertStringContainsString('Time bucket name must contain letters only', $e->getMessage());
+        }
+
+        $axis = TimeAxis::define(bucket: 'hour', horizon: 24, aliases: ['day' => 24, 'shift' => 8]);
+
+        try {
+            $axis->key(-1);
+            self::fail('Expected negative time index rejection.');
+        } catch (SlotFlowInvalidArgumentException $e) {
+            self::assertSame('Time index must be zero or greater.', $e->getMessage());
+        }
+
+        try {
+            $axis->parse('1d?');
+            self::fail('Expected invalid trailing content rejection.');
+        } catch (SlotFlowInvalidArgumentException $e) {
+            self::assertSame('Invalid trailing content in time expression.', $e->getMessage());
+        }
+
+        try {
+            TimeAxis::define(bucket: 'hour', horizon: 24, aliases: ['day' => 24], humanKeyParts: ['w']);
+            self::fail('Expected unknown human key part rejection.');
+        } catch (SlotFlowInvalidArgumentException $e) {
+            self::assertSame('Human key parts must reference known time shorthands.', $e->getMessage());
+        }
+
+        try {
+            TimeAxis::define(bucket: 'hour', horizon: 24, aliases: ['day' => 24], humanKeyParts: ['d', 'd']);
+            self::fail('Expected duplicate human key part rejection.');
+        } catch (SlotFlowInvalidArgumentException $e) {
+            self::assertSame('Human key parts must be unique.', $e->getMessage());
+        }
+
+        try {
+            TimeAxis::define(bucket: 'hour', horizon: 24, aliases: ['day' => 24], humanKeyParts: []);
+            self::fail('Expected empty human key parts rejection.');
+        } catch (SlotFlowInvalidArgumentException $e) {
+            self::assertSame('Human key parts cannot be empty.', $e->getMessage());
+        }
+    }
+
     public function testTimeAxisRejectsDuplicateFirstLettersAcrossBucketAndAliases(): void
     {
         $this->expectException(SlotFlowInvalidArgumentException::class);
@@ -67,7 +124,7 @@ final class TimeLayerTest extends TestCase
     public function testSlotSpaceCanStoreTimeAxisAndPassItToTheCodec(): void
     {
         $timeAxis = new TimeAxis('hour', 24, ['shift' => 8, 'day' => 24]);
-        $space = SlotSpace::define(
+        $space = SlotSpace::defineTimed(
             dimensions: [
                 'loc' => ['sup', 'plant'],
                 'stt' => ['raw', 'wip'],
@@ -81,9 +138,23 @@ final class TimeLayerTest extends TestCase
         self::assertSame($timeAxis, $space->codec->timeAxis);
     }
 
+    public function testTimeAxisCanFormatHumanKeysWithCustomParts(): void
+    {
+        $axis = TimeAxis::define(
+            bucket: 'hour',
+            horizon: 300,
+            aliases: ['shift' => 8, 'day' => 24],
+            humanKeyParts: ['d', 'h'],
+        );
+
+        self::assertSame(['d', 'h'], $axis->humanKeyParts);
+        self::assertSame('9d16h', $axis->humanKey(232));
+        self::assertSame('h0', $axis->humanKey(0));
+    }
+
     public function testTimedSlotSpaceResolvesTimedSlotsByTupleOrSerializedKey(): void
     {
-        $space = SlotSpace::define(
+        $space = SlotSpace::defineTimed(
             dimensions: [
                 'loc' => ['sup', 'plant'],
                 'stt' => ['raw', 'wip', 'fg'],
@@ -101,6 +172,55 @@ final class TimeLayerTest extends TestCase
         self::assertSame('sup', $slot->dimension('loc'));
         self::assertTrue($slot->equals($timed->slot('sup.raw@h3')));
         self::assertSame('sup.raw@h5', $slot->at(5)->key);
+        self::assertSame('sup.raw@3h', $slot->humanKey());
+    }
+
+    public function testTimedSlotSpaceRejectsInvalidTimedSlotInputs(): void
+    {
+        $space = SlotSpace::defineTimed(
+            dimensions: [
+                'loc' => ['sup', 'plant'],
+                'stt' => ['raw', 'wip'],
+            ],
+            timeAxis: TimeAxis::define(bucket: 'hour', horizon: 4),
+        );
+        $timed = TimedSlotSpace::fromBaseSpace($space);
+
+        try {
+            $timed->slot('sup.raw@', null);
+            self::fail('Expected invalid serialized timed slot rejection.');
+        } catch (SlotFlowInvalidArgumentException $e) {
+            self::assertSame('Invalid timed slot key; expected the form slot@time.', $e->getMessage());
+        }
+
+        try {
+            $timed->slot('sup.raw@h1', 2);
+            self::fail('Expected duplicate time rejection.');
+        } catch (SlotFlowInvalidArgumentException $e) {
+            self::assertSame('Timed slot keys already include a time suffix; do not also pass a separate time.', $e->getMessage());
+        }
+
+        try {
+            $timed->slot('sup.raw');
+            self::fail('Expected missing time rejection.');
+        } catch (SlotFlowInvalidArgumentException $e) {
+            self::assertSame('Timed slots require an explicit time unless the serialized key already contains @time.', $e->getMessage());
+        }
+
+        try {
+            /** @phpstan-ignore argument.type */
+            $timed->slot('', 1);
+            self::fail('Expected concrete base slot rejection.');
+        } catch (SlotFlowInvalidArgumentException $e) {
+            self::assertSame('Timed slots require a concrete base slot key or Slot instance.', $e->getMessage());
+        }
+
+        try {
+            $timed->slot('sup.raw', 5);
+            self::fail('Expected time horizon rejection.');
+        } catch (SlotFlowInvalidArgumentException $e) {
+            self::assertSame('Timed slot lies outside the configured time horizon.', $e->getMessage());
+        }
     }
 
     public function testTimedSlotSpaceRequiresAnAxisWhenTheBaseSpaceHasNone(): void
@@ -116,9 +236,9 @@ final class TimeLayerTest extends TestCase
     public function testTimedSlotSpaceAddsHoldoverAndDurationExpandedEdges(): void
     {
         $space = $this->makeTimedBaseSpace()->edgeRules([
-            EdgeRule::allowLabeled('ship', 'sup.raw', 'plant.raw', ['duration' => 'd2', 'lane' => 'truck']),
+            EdgeRule::allowLabeled('ship', 'sup.raw', 'plant.raw', ['duration' => '2d', 'lane' => 'truck']),
             EdgeRule::allowLabeled('process', 'plant.raw', 'plant.wip', ['duration' => 8]),
-            EdgeRule::allowLabeled('finish', 'plant.wip', 'plant.fg', ['duration' => 'd1']),
+            EdgeRule::allowLabeled('finish', 'plant.wip', 'plant.fg', ['duration' => '1d']),
         ]);
 
         $timed = TimedSlotSpace::fromBaseSpace(
@@ -155,6 +275,79 @@ final class TimeLayerTest extends TestCase
                 static fn (TimedMovementEdge $edge): string => $edge->to->key,
                 $timed->getEdgesFrom($timed->slot('plant.wip', 3)),
             ),
+        );
+    }
+
+    public function testTimedSlotSpaceCanResolveDurationFromSlotMetadata(): void
+    {
+        $seenFrom = null;
+        $space = SlotSpace::defineTimed(
+            dimensions: [
+                'loc' => ['sup', 'plant'],
+                'stt' => ['raw', 'wip', 'fg'],
+            ],
+            timeAxis: TimeAxis::define(bucket: 'hour', horizon: 72, aliases: ['day' => 24]),
+        )
+            ->setDurationResolver(static function (MovementEdge $edge, TimedDurationContext $context) use (&$seenFrom): string {
+                $seenFrom = $context->from->key;
+
+                return (string) ($edge->to->attributes['handling-duration'] ?? '0');
+            })
+            ->slotRules([
+                SlotRule::allow('*'),
+                SlotRule::allow('plant.raw', ['handling-duration' => '1d']),
+            ])
+            ->edgeRules([
+                EdgeRule::allowLabeled('ship', 'sup.raw', 'plant.raw'),
+            ]);
+
+        $timed = TimedSlotSpace::fromBaseSpace($space);
+
+        $edges = $timed->getEdgesFrom($timed->slot('sup.raw', 0));
+
+        self::assertSame(
+            ['sup.raw@h1', 'plant.raw@h24'],
+            array_map(static fn (TimedMovementEdge $edge): string => $edge->to->key, $edges),
+        );
+        self::assertSame('sup.raw@h0', $seenFrom);
+        self::assertSame(24, $edges[1]->attributes['duration']);
+    }
+
+    public function testTimedSlotSpaceRejectsInvalidDurationValuesAndCanEnumerateSlotsAtATime(): void
+    {
+        $space = $this->makeTimedBaseSpace()->edgeRules([
+            EdgeRule::allowLabeled('ship', 'sup.raw', 'plant.raw', ['duration' => ['bad']]),
+        ]);
+        $timed = TimedSlotSpace::fromBaseSpace($space, TimeAxis::define('hour', 8));
+
+        try {
+            $timed->getEdgesFrom($timed->slot('sup.raw', 0));
+            self::fail('Expected invalid duration metadata rejection.');
+        } catch (SlotFlowInvalidArgumentException $e) {
+            self::assertSame('Timed movement edge duration must be an int or time expression string.', $e->getMessage());
+        }
+
+        $spaceWithResolver = $this->makeTimedBaseSpace()
+            ->edgeRules([EdgeRule::allowLabeled('ship', 'sup.raw', 'plant.raw')]);
+        $timedWithResolver = TimedSlotSpace::fromBaseSpace(
+            $spaceWithResolver,
+            TimeAxis::define('hour', 8),
+            static fn (): array => [],
+        );
+
+        try {
+            $timedWithResolver->getEdgesFrom($timedWithResolver->slot('sup.raw', 0));
+            self::fail('Expected invalid duration resolver rejection.');
+        } catch (SlotFlowInvalidArgumentException $e) {
+            self::assertSame('Timed movement edge duration must be an int or time expression string.', $e->getMessage());
+        }
+
+        $validTimed = TimedSlotSpace::fromBaseSpace($spaceWithResolver, TimeAxis::define('hour', 2));
+        $slotKeys = array_map(static fn ($slot): string => $slot->key, $validTimed->slotsAt(1));
+        sort($slotKeys);
+        self::assertSame(
+            ['plant.fg@h1', 'plant.raw@h1', 'plant.wip@h1', 'sup.fg@h1', 'sup.raw@h1', 'sup.wip@h1'],
+            $slotKeys,
         );
     }
 
@@ -201,6 +394,40 @@ final class TimeLayerTest extends TestCase
             ['sup.raw@t1' => 3, 'plant.wip@t4' => 2],
             $timedState->all(),
         );
+    }
+
+    public function testTimedQuantityStateRejectsAmbiguousUntimedTuples(): void
+    {
+        $space = $this->makeTimedBaseSpace();
+        $timedSpace = TimedSlotSpace::fromBaseSpace($space, TimeAxis::define('tick', 6));
+
+        try {
+            new TimedQuantityState($timedSpace, [['sup.raw', 3]]);
+            self::fail('Expected untimed tuple rejection.');
+        } catch (SlotFlowInvalidArgumentException $e) {
+            self::assertSame(
+                'Timed slot tuples must provide either a TimedSlot, a serialized timed key, or a separate time value.',
+                $e->getMessage(),
+            );
+        }
+    }
+
+    public function testTimedSlotAndTimedMovementEdgeStringHelpers(): void
+    {
+        $space = SlotSpace::defineTimed(
+            dimensions: [
+                'loc' => ['sup', 'plant'],
+                'stt' => ['raw'],
+            ],
+            timeAxis: TimeAxis::define(bucket: 'hour', horizon: 4),
+        )->edgeRules([
+            EdgeRule::allowLabeled('ship', 'sup.raw', 'plant.raw', ['duration' => 2]),
+        ]);
+        $timed = TimedSlotSpace::fromBaseSpace($space);
+        $edge = $timed->getEdgesFrom($timed->slot('sup.raw', 0))[1];
+
+        self::assertSame('sup.raw@h0', (string) $edge->from);
+        self::assertSame('(sup.raw@h0) -> (plant.raw@h2)', (string) $edge);
     }
 
     private function makeTimedBaseSpace(): SlotSpace

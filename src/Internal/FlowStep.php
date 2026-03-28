@@ -8,6 +8,9 @@ use Nandan108\SlotFlow\Contracts\AllocationPolicyInterface;
 use Nandan108\SlotFlow\Contracts\EdgeFilterPolicyInterface;
 use Nandan108\SlotFlow\Contracts\EdgeOrderingPolicyInterface;
 use Nandan108\SlotFlow\Contracts\QttyConstraintPolicyInterface;
+use Nandan108\SlotFlow\MovementEdge;
+use Nandan108\SlotFlow\Runtime\AllocationDecision;
+use Nandan108\SlotFlow\Runtime\FlowContext;
 use Nandan108\SlotFlow\SlotSpace;
 
 /**
@@ -18,11 +21,11 @@ use Nandan108\SlotFlow\SlotSpace;
 final class FlowStep
 {
     /**
-     * @param list<callable|EdgeOrderingPolicyInterface>   $orderingPolicies
-     * @param list<callable|EdgeFilterPolicyInterface>     $filterPolicies
-     * @param list<callable|QttyConstraintPolicyInterface> $quantityConstraintPolicies
-     * @param list<callable|AllocationPolicyInterface>     $allocationPolicies
-     * @param list<non-empty-string>|null                  $edgeLabels
+     * @param list<(callable(FlowContext): list<MovementEdge>)|EdgeOrderingPolicyInterface>     $orderingPolicies
+     * @param list<(callable(FlowContext): list<MovementEdge>)|EdgeFilterPolicyInterface>       $filterPolicies
+     * @param list<(callable(MovementEdge, FlowContext): mixed)|QttyConstraintPolicyInterface>  $quantityConstraintPolicies
+     * @param list<(callable(FlowContext): list<AllocationDecision>)|AllocationPolicyInterface> $allocationPolicies
+     * @param list<non-empty-string>|null                                                       $edgeLabels
      *
      * @psalm-param TSlotPattern $from
      * @psalm-param TSlotPattern $to
@@ -36,5 +39,6 @@ final class FlowStep
         public array $quantityConstraintPolicies = [],
         public array $allocationPolicies = [],
     ) {
+
     }
 }

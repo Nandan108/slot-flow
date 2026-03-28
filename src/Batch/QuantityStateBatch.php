@@ -4,10 +4,8 @@ declare(strict_types=1);
 
 namespace Nandan108\SlotFlow\Batch;
 
-use Nandan108\SlotFlow\Exceptions\SlotFlowInvalidArgumentException;
 use Nandan108\SlotFlow\MovementResult;
 use Nandan108\SlotFlow\QuantityState;
-use Nandan108\SlotFlow\Slot;
 use Nandan108\SlotFlow\SlotSpace;
 
 /**
@@ -15,8 +13,8 @@ use Nandan108\SlotFlow\SlotSpace;
  *
  * @template TSubject
  *
+ * @psalm-import-type TInventoryTuple from QuantityState
  * @psalm-import-type TSlotPattern from SlotSpace
- * @psalm-import-type TSlotValues from SlotSpace
  *
  * @api
  */
@@ -38,16 +36,13 @@ class QuantityStateBatch
      * @psalm-template TRow
      * @psalm-template TFactorySubject
      *
-     * @param \Closure      $subjectGetter   closure to get the subject from a row
-     * @param \Closure      $slotRowGetter   closure to resolve slot dimensions and quantity from a row
-     * @param \Closure      $quantityGetter  closure to get quantity from rows belonging to the same subject
-     * @param \Closure|null $subjectIdGetter optional closure to get subject id from a row
+     * @param \Closure $subjectGetter  closure to get the subject from a row
+     * @param \Closure $slotRowGetter  closure to resolve slot dimensions and quantity from a row
+     * @param callable $quantityGetter closure to get quantity from rows belonging to the same subject
      *
      * @psalm-param iterable<TRow>                                             $rows
-     * @psalm-param \Closure(TRow): TFactorySubject                            $subjectGetter
-     * @psalm-param \Closure(TRow): list<array{0: Slot|TSlotValues, 1: int, 2?: array<string, mixed>}> $slotRowGetter
-     * @psalm-param \Closure(list<TRow>): int                                  $quantityGetter
-     * @psalm-param ?\Closure(TFactorySubject): non-empty-string               $subjectIdGetter
+     * @psalm-param \Closure(TRow): TFactorySubject $subjectGetter
+     * @psalm-param (\Closure(TRow): list<TInventoryTuple>|\Closure(TRow, SlotSpace): list<TInventoryTuple>) $slotRowGetter
      *
      * @psalm-return self<TFactorySubject>
      */
@@ -56,35 +51,30 @@ class QuantityStateBatch
         iterable $rows,
         \Closure $subjectGetter,
         \Closure $slotRowGetter,
-        \Closure $quantityGetter,
-        ?\Closure $subjectIdGetter,
+        callable $quantityGetter,
     ): self {
-        $subjectIdGetter ??= fn (mixed $subject): string => (string) $subject;
-
         /** @var array<string,array{subject:TFactorySubject,rows:list<TRow>}> $rowsBySubject */
         $rowsBySubject = [];
         foreach ($rows as $row) {
             $subject = $subjectGetter($row);
-            $subjectId = $subjectIdGetter($subject);
+            $subjectKey = $space->subjectKey($subject);
 
-            /** @psalm-suppress DocblockTypeContradiction */
-            if (!is_string($subjectId) || '' === $subjectId) {
-                throw new SlotFlowInvalidArgumentException(
-                    'Subject ID must be a non-empty string.',
-                    ['subject' => $subject, 'subject_id' => $subjectId],
-                );
+            if (!isset($rowsBySubject[$subjectKey])) {
+                $rowsBySubject[$subjectKey] = ['subject' => $subject, 'rows' => []];
             }
 
-            $rowsBySubject[$subjectId]['subject'] ??= $subject;
-            $rowsBySubject[$subjectId]['rows'][] = $row;
+            $rowsBySubject[$subjectKey]['rows'][] = $row;
         }
 
         /** @var list<BatchItem<TFactorySubject>> $batchItems */
         $batchItems = [];
         foreach ($rowsBySubject as ['subject' => $subject, 'rows' => $rows]) {
+            /** @var int|float $quantity */
+            $quantity = call_user_func($quantityGetter, $rows);
+
             $batchItems[] = new BatchItem(
                 subject: $subject,
-                quantity: $quantityGetter($rows),
+                quantity: $quantity,
                 inventory: QuantityState::fromRows($space, $rows, $slotRowGetter),
             );
         }

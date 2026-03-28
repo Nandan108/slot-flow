@@ -23,7 +23,7 @@ final class BatchItem
      */
     public function __construct(
         public readonly mixed $subject,
-        public readonly int $quantity,
+        public readonly int | float $quantity,
         public readonly QuantityState $inventory,
     ) {
     }

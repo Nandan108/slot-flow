@@ -13,7 +13,6 @@ It is intentionally domain-neutral. The same primitives can be used for:
 - inventory engines
 - fulfillment and logistics
 - supply-chain planning and transfers
-- manufacturing and assembly stages
 - repair and refurbishment loops
 - reverse logistics and returns
 - reservation/booking flows
@@ -259,6 +258,60 @@ $space->flow('reserve', static fn (Flow $c) => $c
 
 In practice:
 
+## 5. Delivery Promise Scheduling
+
+If your `SlotSpace` has a `TimeAxis`, you can plan earliest-arrival movement schedules with `EarliestArrivalSolver`.
+Use this when you want a plan first, before mutating the live `QuantityState`.
+
+This is useful for:
+
+- delivery-promise calculation
+- inbound and transfer planning
+- dispatch scheduling
+- backorder ETA estimation
+
+Example:
+
+```php
+use Nandan108\SlotFlow\Flow;
+use Nandan108\SlotFlow\Rules\EdgeRule;
+use Nandan108\SlotFlow\ScheduleRequest;
+use Nandan108\SlotFlow\Solvers\EarliestArrivalSolver;
+use Nandan108\SlotFlow\Time\TimeAxis;
+
+$space = SlotSpace::defineTimed(
+    dimensions: [
+        'loc' => ['sup', 'wh', 'cust'],
+        'stt' => ['po', 'fs', 'sd'],
+    ],
+    timeAxis: TimeAxis::define(bucket: 'hour', horizon: 24 * 7, aliases: ['day' => 24]),
+)->edgeRules([
+    EdgeRule::allowLabeled('receive-standard', 'sup.po', 'wh.fs', ['duration' => '2d']),
+    EdgeRule::allowLabeled('receive-express', 'sup.po', 'wh.fs', ['duration' => '1d']),
+    EdgeRule::allowLabeled('ship-standard', 'wh.fs', 'cust.sd', ['duration' => '1d']),
+])->flow(
+    'promise-deliver',
+    static fn (Flow $flow) => $flow
+        ->stepByLabeledEdges('receive-standard', 'receive-express')
+        ->stepByLabeledEdges('ship-standard'),
+);
+
+$schedule = (new EarliestArrivalSolver())->schedule(new ScheduleRequest(
+    state: $inventory,
+    space: $space,
+    flow: 'promise-deliver',
+    quantity: 4,
+    target: 'cust.sd',
+));
+```
+
+The resulting `MovementSchedule` gives you:
+
+- timed steps
+- arrival milestones
+- net timed deltas
+- a concrete earliest arrival for the requested quantity
+
 - use a `Flow` object when building or testing a flow inline
 - use a registered flow name when the flow is part of the slot-space model and should be reused consistently
 - registered names pair naturally with parameterized flows, because the caller only needs to provide `params` for the current execution
@@ -322,7 +375,6 @@ $batch = QuantityStateBatch::fromRows(
         [['loc' => $row['loc'], 'own' => $row['own'], 'stt' => 'fs'], $row['fs']],
     ],
     quantityGetter: fn (array $rows): int => $rows[0]['requested_qty'],
-    subjectIdGetter: fn (string $subject): string => $subject,
 );
 
 $batch = (new BatchMovementEngine(new MovementEngine()))->execute(

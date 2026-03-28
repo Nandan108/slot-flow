@@ -12,6 +12,7 @@ use Nandan108\SlotFlow\Rules\EdgeRule;
 use Nandan108\SlotFlow\Rules\RuleSet;
 use Nandan108\SlotFlow\Rules\SlotRule;
 use Nandan108\SlotFlow\Time\TimeAxis;
+use Nandan108\SlotFlow\Time\TimedDurationResolverInterface;
 
 /**
  * Defines the slot space, its dimensions, the slots that exist within it, and the edges and flows that operate on it.
@@ -48,6 +49,8 @@ final class SlotSpace
 
     public SlotCodec $codec;
     public readonly ?TimeAxis $timeAxis;
+    private ?TimedDurationResolverInterface $durationResolver = null;
+    private \Closure $subjectKeyResolver;
 
     /**
      * @var array<non-empty-string, Slot>
@@ -85,38 +88,50 @@ final class SlotSpace
 
     /**
      * @param array<non-empty-string, list<non-empty-string>> $dimensions
-     * @param TimeAxis|?class-string<SlotCodec>               $timeAxis
      * @param ?class-string<SlotCodec>                        $codecClass
      *
      * @psalm-param array<TDimensionName, list<TDimensionValue>> $dimensions
      */
     public static function define(
         array $dimensions,
-        TimeAxis | string | null $timeAxis = null,
         ?string $codecClass = null,
     ): self {
-        return new self($dimensions, $timeAxis, $codecClass);
+        return new self($dimensions, null, null, $codecClass);
     }
 
     /**
      * @param array<non-empty-string, list<non-empty-string>> $dimensions
-     * @param TimeAxis|?class-string<SlotCodec>               $timeAxis
+     * @param ?class-string<SlotCodec>                        $codecClass
+     *
+     * @psalm-param array<TDimensionName, list<TDimensionValue>> $dimensions
+     */
+    public static function defineTimed(
+        array $dimensions,
+        TimeAxis $timeAxis,
+        TimedDurationResolverInterface | callable | null $durationResolver = null,
+        ?string $codecClass = null,
+    ): self {
+        return (new self($dimensions, $timeAxis, null, $codecClass))
+            ->setDurationResolver($durationResolver);
+    }
+
+    /**
+     * @param array<non-empty-string, list<non-empty-string>> $dimensions
      * @param ?class-string<SlotCodec>                        $codecClass
      *
      * @psalm-param array<TDimensionName, list<TDimensionValue>> $dimensions
      */
     public function __construct(
         array $dimensions,
-        TimeAxis | string | null $timeAxis = null,
+        ?TimeAxis $timeAxis = null,
+        TimedDurationResolverInterface | callable | null $durationResolver = null,
         ?string $codecClass = null,
     ) {
-        $resolvedTimeAxis = $timeAxis instanceof TimeAxis ? $timeAxis : null;
-        $resolvedCodecClass = is_string($timeAxis) ? $timeAxis : $codecClass;
-
-        $this->timeAxis = $resolvedTimeAxis;
+        $this->timeAxis = $timeAxis;
+        $this->subjectKeyResolver = \Closure::fromCallable([$this, 'defaultSubjectKey']);
 
         /** @psalm-suppress UnsafeInstantiation */
-        $this->codec = new ($resolvedCodecClass ?? DefaultSlotKeyCodec::class)($this, $this->timeAxis);
+        $this->codec = new ($codecClass ?? DefaultSlotKeyCodec::class)($this, $this->timeAxis);
 
         $this->codec->initialDimensionValueValidation($dimensions);
 
@@ -133,6 +148,21 @@ final class SlotSpace
 
             $this->slotsByKey[$key] = new Slot($key, $values, $this);
         }
+
+        $this->setDurationResolver($durationResolver);
+    }
+
+    public function getDurationResolver(): ?TimedDurationResolverInterface
+    {
+        return $this->durationResolver;
+    }
+
+    public function setDurationResolver(
+        TimedDurationResolverInterface | callable | null $durationResolver,
+    ): self {
+        $this->durationResolver = self::normalizeDurationResolver($durationResolver);
+
+        return $this;
     }
 
     /**
@@ -185,6 +215,39 @@ final class SlotSpace
         return $this;
     }
 
+    private static function normalizeDurationResolver(
+        TimedDurationResolverInterface | callable | null $durationResolver,
+    ): ?TimedDurationResolverInterface {
+        return match (true) {
+            null === $durationResolver                                  => null,
+            $durationResolver instanceof TimedDurationResolverInterface => $durationResolver,
+            default                                                     => new class(\Closure::fromCallable($durationResolver)) implements TimedDurationResolverInterface {
+                private readonly \Closure $resolver;
+
+                public function __construct(\Closure $resolver)
+                {
+                    $this->resolver = $resolver;
+                }
+
+                #[\Override]
+                public function resolve(MovementEdge $edge, Time\TimedDurationContext $context): int | string
+                {
+                    /** @psalm-var mixed $duration */
+                    $duration = ($this->resolver)($edge, $context);
+
+                    if (is_int($duration) || is_string($duration)) {
+                        return $duration;
+                    }
+
+                    throw new SlotFlowInvalidArgumentException(
+                        'Timed movement edge duration must be an int or time expression string.',
+                        ['edge' => (string) $edge, 'duration' => $duration],
+                    );
+                }
+            },
+        };
+    }
+
     /**
      * This is used to generate the valid edges between slots, after the valid slots have been determined by the slot rules.
      * The starting point is always an empty set of edges, and the rules are applied sequentially to add edges between slots matching the from and to patterns.
@@ -213,6 +276,37 @@ final class SlotSpace
         }
 
         return $this;
+    }
+
+    /**
+     * Configure how arbitrary subject values are converted to stable internal keys.
+     *
+     * @param callable(mixed): string $resolver
+     */
+    public function subjectKeyResolver(callable $resolver): self
+    {
+        $this->subjectKeyResolver = \Closure::fromCallable($resolver);
+
+        return $this;
+    }
+
+    /**
+     * Resolve one internal subject key using the space's configured resolver.
+     *
+     * @return non-empty-string
+     */
+    public function subjectKey(mixed $subject): string
+    {
+        $subjectKey = ($this->subjectKeyResolver)($subject);
+
+        if (!is_string($subjectKey) || '' === $subjectKey) {
+            throw new SlotFlowInvalidArgumentException(
+                'Subject key must be a non-empty string.',
+                ['subject' => $subject, 'subject_key' => $subjectKey],
+            );
+        }
+
+        return $subjectKey;
     }
 
     /**
@@ -323,7 +417,7 @@ final class SlotSpace
      *
      * @return list<array<non-empty-string, non-empty-string>|null>
      *
-     * @psalm-return list<TSlotPartial>|list<null>
+     * @psalm-return list<TSlotPartial>|array{null}
      *
      * @throws SlotFlowInvalidArgumentException if the pattern is invalid or contains unknown dimensions or values
      */
@@ -774,6 +868,22 @@ final class SlotSpace
                     }
                 }
             });
+    }
+
+    private function defaultSubjectKey(mixed $subject): string
+    {
+        return match (true) {
+            is_string($subject)             => $subject,
+            null === $subject               => '__null__',
+            is_int($subject)                => (string) $subject,
+            is_float($subject)              => (string) $subject,
+            is_bool($subject)               => $subject ? 'true' : 'false',
+            $subject instanceof \Stringable => (string) $subject,
+            default                         => throw new SlotFlowInvalidArgumentException(
+                'Subject key could not be derived from the given subject. Configure the slot space with a subject-key resolver for complex subjects.',
+                ['subject_type' => get_debug_type($subject)],
+            ),
+        };
     }
 
     /**

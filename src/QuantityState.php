@@ -14,17 +14,16 @@ use Nandan108\SlotFlow\Exceptions\SlotFlowInvalidArgumentException;
  *
  * @psalm-consistent-constructor
  *
- * @psalm-type TQtty = int|float
- * @psalm-type TInventoryTuple = array{0: Slot|TSlotPattern, 1: TQtty, 2?: array<string, mixed>}
+ * @psalm-type TInventoryTuple = array{0: Slot|TSlotPattern, 1: int|float, 2?: array<string, mixed>}
  *
  * @api
  */
 class QuantityState
 {
-    /** @psalm-var array<string, TQtty> */
+    /** @var array<non-empty-string, int|float> */
     private array $quantities = [];
 
-    /** @var array<string, array<string, mixed>> */
+    /** @var array<non-empty-string, array<string, mixed>> */
     private array $slotAttributes = [];
 
     /**
@@ -43,14 +42,11 @@ class QuantityState
      * @param Slot|array<string|null>|string|null $slot
      *
      * @psalm-param Slot|TSlotPattern $slot
-     *
-     * @psalm-return TQtty
      */
     public function get(Slot | array | string | null $slot): int | float
     {
         $slot = $slot instanceof Slot ? $slot : $this->space->slot($slot);
 
-        /** @var TQtty */
         return $this->quantities[(string) $slot] ?? 0;
     }
 
@@ -63,8 +59,6 @@ class QuantityState
      * @param Slot|array<string|null>|string|null ...$slotPatterns
      *
      * @psalm-param Slot|TSlotPattern ...$slotPatterns
-     *
-     * @psalm-return TQtty
      */
     public function getSum(Slot | array | string | null ...$slotPatterns): int | float
     {
@@ -82,7 +76,6 @@ class QuantityState
             }
         }
 
-        /** @var TQtty */
         $sum = 0;
         foreach ($slotsByKey as $slot) {
             /** @psalm-suppress InvalidOperand */
@@ -118,15 +111,10 @@ class QuantityState
         $this->quantities[$slot->key] = $quantity;
     }
 
-    /**
-     * @psalm-param TQtty $delta
-     */
     public function add(Slot $slot, int | float $delta): void
     {
         $key = $slot->key;
-        /** @var TQtty */
-        $zero = 0;
-        $this->quantities[$key] ??= $zero;
+        $this->quantities[$key] ??= 0;
 
         /** @psalm-suppress InvalidOperand, InvalidPropertyAssignmentValue */
         $this->quantities[$key] += $delta;
@@ -135,9 +123,7 @@ class QuantityState
     /**
      * Return all non-zero stored quantities keyed by slot key.
      *
-     * @return array<string, int|float>
-     *
-     * @psalm-return array<string, TQtty>
+     * @return array<non-empty-string, int|float>
      */
     public function all(): array
     {
@@ -152,6 +138,18 @@ class QuantityState
     public function slotAttributes(Slot $slot): array
     {
         return $this->slotAttributes[$slot->key] ?? [];
+    }
+
+    /**
+     * Return remembered attributes for all known slots, keyed by slot key.
+     *
+     * @return array<non-empty-string, array<string, mixed>>
+     *
+     * @psalm-return array<non-empty-string, array<string, mixed>>
+     */
+    public function allSlotAttributes(): array
+    {
+        return $this->slotAttributes;
     }
 
     /**
@@ -172,6 +170,11 @@ class QuantityState
         $clone->slotAttributes = $this->slotAttributes;
 
         return $clone;
+    }
+
+    public function space(): SlotSpace
+    {
+        return $this->space;
     }
 
     /**

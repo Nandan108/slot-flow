@@ -4,6 +4,10 @@ declare(strict_types=1);
 
 namespace Nandan108\SlotFlow\Solvers;
 
+use Nandan108\SlotFlow\Contracts\AllocationPolicyInterface;
+use Nandan108\SlotFlow\Contracts\EdgeFilterPolicyInterface;
+use Nandan108\SlotFlow\Contracts\EdgeOrderingPolicyInterface;
+use Nandan108\SlotFlow\Contracts\QttyConstraintPolicyInterface;
 use Nandan108\SlotFlow\Contracts\ScheduleSolverInterface;
 use Nandan108\SlotFlow\Flow;
 use Nandan108\SlotFlow\Internal\FlowStep;
@@ -12,6 +16,8 @@ use Nandan108\SlotFlow\MovementSchedule;
 use Nandan108\SlotFlow\QuantityState;
 use Nandan108\SlotFlow\Results\ScheduledStep;
 use Nandan108\SlotFlow\Results\ScheduleMilestone;
+use Nandan108\SlotFlow\Runtime\AllocationDecision;
+use Nandan108\SlotFlow\Runtime\FlowContext;
 use Nandan108\SlotFlow\ScheduleRequest;
 use Nandan108\SlotFlow\Slot;
 use Nandan108\SlotFlow\SlotSpace;
@@ -50,22 +56,26 @@ final class EarliestArrivalSolver implements ScheduleSolverInterface
         /** @var list<array{source: Slot, quantity: int|float, path: list<TimedMovementEdge>, arrival: int}> $candidates */
         $candidates = [];
         // For each currently stocked source in the first step, search the earliest full timed path to the target.
-        foreach ($this->candidateSourceSlots($steps[0], $state) as $source) {
-            $path = $this->earliestPath(
+        foreach ($this->candidateSourceSlots($steps[0]['edges'], $state, $quantity) as $source) {
+            $plan = $this->earliestPath(
                 timedSpace: $timedSpace,
-                start: $timedSpace->slot($source, $originTime),
+                start: $timedSpace->slot($source['slot'], $originTime),
+                startingQuantity: $source['quantity'],
+                startingState: $state->copy(),
                 stepEdges: $steps,
                 target: $resolvedTarget,
+                params: $params,
             );
 
-            if (null === $path || [] === $path) {
+            if (null === $plan || [] === $plan['path']) {
                 continue;
             }
 
+            $path = $plan['path'];
             $lastEdge = $path[count($path) - 1];
             $candidates[] = [
-                'source'   => $source,
-                'quantity' => $state->get($source),
+                'source'   => $source['slot'],
+                'quantity' => $plan['quantity'],
                 'path'     => $path,
                 'arrival'  => $lastEdge->to->timeIndex,
             ];
@@ -110,15 +120,18 @@ final class EarliestArrivalSolver implements ScheduleSolverInterface
      *
      * @param array<string, string> $params
      *
-     * @return list<list<MovementEdge>>
+     * @return list<array{step: FlowStep, edges: list<MovementEdge>}>
      */
     private function resolveStepEdges(SlotSpace $space, Flow $flow, array $params): array
     {
-        /** @var list<list<MovementEdge>> $resolved */
+        /** @var list<array{step: FlowStep, edges: list<MovementEdge>}> $resolved */
         $resolved = [];
 
         foreach ($flow->steps() as $step) {
-            $resolved[] = $this->resolveOneStepEdges($space, $step, $params);
+            $resolved[] = [
+                'step'  => $step,
+                'edges' => $this->resolveOneStepEdges($space, $step, $params),
+            ];
         }
 
         return $resolved;
@@ -132,11 +145,13 @@ final class EarliestArrivalSolver implements ScheduleSolverInterface
     private function resolveOneStepEdges(SlotSpace $space, FlowStep $step, array $params): array
     {
         if (null !== $step->edgeLabels) {
-            /** @var list<non-empty-string> $labels */
-            $labels = array_map(
-                fn (string $label): string => $this->resolveStringParameter($label, $params),
-                $step->edgeLabels,
-            );
+            $labels = array_values(array_filter(
+                array_map(
+                    fn (string $label): string => $this->resolveStringParameter($label, $params),
+                    $step->edgeLabels,
+                ),
+                static fn (string $label): bool => '' !== $label,
+            ));
 
             return $space->edgesByLabels($labels);
         }
@@ -153,22 +168,26 @@ final class EarliestArrivalSolver implements ScheduleSolverInterface
      *
      * @param list<MovementEdge> $edges
      *
-     * @return list<Slot>
+     * @return list<array{slot: Slot, quantity: int|float}>
      */
-    private function candidateSourceSlots(array $edges, QuantityState $state): array
+    private function candidateSourceSlots(array $edges, QuantityState $state, int | float $requestedQuantity): array
     {
-        /** @var array<string, Slot> $sources */
+        /** @var array<string, array{slot: Slot, quantity: int|float}> $sources */
         $sources = [];
+
         foreach ($edges as $edge) {
-            if ($edge->from->isNil()) {
+            $available = $edge->from->isNil()
+                ? $requestedQuantity
+                : $state->get($edge->from);
+
+            if ($available <= 0) {
                 continue;
             }
 
-            if ($state->get($edge->from) <= 0) {
-                continue;
-            }
-
-            $sources[$edge->from->key] = $edge->from;
+            $sources[$edge->from->key] = [
+                'slot'     => $edge->from,
+                'quantity' => $available,
+            ];
         }
 
         return array_values($sources);
@@ -177,41 +196,67 @@ final class EarliestArrivalSolver implements ScheduleSolverInterface
     /**
      * Find the earliest complete timed path from one source through the ordered flow steps.
      *
-     * @param list<list<MovementEdge>> $stepEdges
+     * @param list<array{step: FlowStep, edges: list<MovementEdge>}> $stepEdges
+     * @param array<string, string>                                  $params
      *
-     * @return ?list<TimedMovementEdge>
+     * @return ?array{path: list<TimedMovementEdge>, quantity: int|float}
      */
     private function earliestPath(
         TimedSlotSpace $timedSpace,
         TimedSlot $start,
+        int | float $startingQuantity,
+        QuantityState $startingState,
         array $stepEdges,
         Slot $target,
+        array $params,
     ): ?array {
-        /** @var array<string, array{slot: TimedSlot, path: list<TimedMovementEdge>}> $candidates */
-        $candidates = [$start->key => ['slot' => $start, 'path' => []]];
+        /** @var array<string, array{slot: TimedSlot, path: list<TimedMovementEdge>, quantity: int|float, inventory: QuantityState}> $candidates */
+        $candidates = [
+            $start->key => [
+                'slot'      => $start,
+                'path'      => [],
+                'quantity'  => $startingQuantity,
+                'inventory' => $startingState,
+            ],
+        ];
 
-        foreach ($stepEdges as $index => $edgesForStep) {
-            $allowed = [];
-            foreach ($edgesForStep as $edge) {
-                $allowed[$edge->from->key.'>'.$edge->to->key] = true;
-            }
+        foreach ($stepEdges as $index => $stepData) {
+            $flowStep = $stepData['step'];
+            $edgesForStep = $stepData['edges'];
 
             $isFinalStep = $index === array_key_last($stepEdges);
-            /** @var array<string, array{slot: TimedSlot, path: list<TimedMovementEdge>}> $next */
+            /** @var array<string, array{slot: TimedSlot, path: list<TimedMovementEdge>, quantity: int|float, inventory: QuantityState}> $next */
             $next = [];
 
             foreach ($candidates as $candidate) {
+                $allowed = $this->availableEdgesForStep(
+                    step: $flowStep,
+                    edges: $edgesForStep,
+                    inventory: $candidate['inventory'],
+                    quantity: $candidate['quantity'],
+                    params: $params,
+                );
+
+                if ([] === $allowed) {
+                    continue;
+                }
+
                 foreach ($timedSpace->getEdgesFrom($candidate['slot']) as $timedEdge) {
                     if (null === $timedEdge->baseEdge) {
                         continue;
                     }
 
-                    $key = $timedEdge->baseEdge->from->key.'>'.$timedEdge->baseEdge->to->key;
-                    if (!isset($allowed[$key])) {
+                    $edgeId = $this->edgeKey($timedEdge->baseEdge);
+                    if (!isset($allowed[$edgeId])) {
                         continue;
                     }
 
                     if ($isFinalStep && $timedEdge->to->slot->key !== $target->key) {
+                        continue;
+                    }
+
+                    $movable = min($candidate['quantity'], $allowed[$edgeId]['quantity']);
+                    if ($movable <= 0) {
                         continue;
                     }
 
@@ -220,8 +265,17 @@ final class EarliestArrivalSolver implements ScheduleSolverInterface
                     if (
                         !isset($next[$toKey])
                         || $timedEdge->to->timeIndex < $next[$toKey]['slot']->timeIndex
+                        || (
+                            $timedEdge->to->timeIndex === $next[$toKey]['slot']->timeIndex
+                            && $movable > $next[$toKey]['quantity']
+                        )
                     ) {
-                        $next[$toKey] = ['slot' => $timedEdge->to, 'path' => $candidatePath];
+                        $next[$toKey] = [
+                            'slot'      => $timedEdge->to,
+                            'path'      => $candidatePath,
+                            'quantity'  => $movable,
+                            'inventory' => $this->applyMovement($candidate['inventory'], $timedEdge->baseEdge, $movable),
+                        ];
                     }
                 }
             }
@@ -233,15 +287,24 @@ final class EarliestArrivalSolver implements ScheduleSolverInterface
             $candidates = $next;
         }
 
-        /** @var ?array{slot: TimedSlot, path: list<TimedMovementEdge>} $best */
+        /** @var ?array{slot: TimedSlot, path: list<TimedMovementEdge>, quantity: int|float, inventory: QuantityState} $best */
         $best = null;
         foreach ($candidates as $candidate) {
-            if (null === $best || $candidate['slot']->timeIndex < $best['slot']->timeIndex) {
+            if (
+                null === $best
+                || $candidate['slot']->timeIndex < $best['slot']->timeIndex
+                || (
+                    $candidate['slot']->timeIndex === $best['slot']->timeIndex
+                    && $candidate['quantity'] > $best['quantity']
+                )
+            ) {
                 $best = $candidate;
             }
         }
 
-        return $best['path'] ?? null;
+        return null === $best
+            ? null
+            : ['path' => $best['path'], 'quantity' => $best['quantity']];
     }
 
     /**
@@ -296,5 +359,183 @@ final class EarliestArrivalSolver implements ScheduleSolverInterface
         );
 
         return $resolved ?? $value ?: $value;
+    }
+
+    /**
+     * @param list<MovementEdge>    $edges
+     * @param array<string, string> $params
+     *
+     * @return array<string, array{edge: MovementEdge, quantity: int|float}>
+     */
+    private function availableEdgesForStep(
+        FlowStep $step,
+        array $edges,
+        QuantityState $inventory,
+        int | float $quantity,
+        array $params,
+    ): array {
+        $context = [] === $params ? [] : ['params' => $params];
+        $stepContext = new FlowContext($inventory->space(), $edges, $inventory, $quantity, null, $context);
+
+        foreach ($step->filterPolicies as $policy) {
+            if (!is_callable($policy) && !$policy instanceof EdgeFilterPolicyInterface) {
+                continue;
+            }
+
+            $edges = $this->filterEdges($policy, $stepContext);
+            $stepContext = new FlowContext($inventory->space(), $edges, $inventory, $quantity, null, $context);
+        }
+
+        foreach ($step->orderingPolicies as $policy) {
+            if (!is_callable($policy) && !$policy instanceof EdgeOrderingPolicyInterface) {
+                continue;
+            }
+
+            $edges = $this->orderEdges($policy, $stepContext);
+            $stepContext = new FlowContext($inventory->space(), $edges, $inventory, $quantity, null, $context);
+        }
+
+        /** @var array<string, int|float> $decisionQuantities */
+        $decisionQuantities = [];
+        if ([] !== $step->allocationPolicies) {
+            foreach ($step->allocationPolicies as $policy) {
+                if (!is_callable($policy) && !$policy instanceof AllocationPolicyInterface) {
+                    continue;
+                }
+
+                $decisions = $this->allocateEdges($policy, $stepContext);
+                if ([] === $decisions) {
+                    continue;
+                }
+
+                $edges = [];
+                $decisionQuantities = [];
+                foreach ($decisions as $decision) {
+                    $edgeId = $this->edgeKey($decision->edge);
+                    $edges[$edgeId] = $decision->edge;
+                    /** @psalm-suppress InvalidOperand */
+                    $decisionQuantities[$edgeId] = ($decisionQuantities[$edgeId] ?? 0) + $decision->quantity;
+                }
+
+                $edges = array_values($edges);
+                $stepContext = new FlowContext($inventory->space(), $edges, $inventory, $quantity, null, $context);
+            }
+        }
+
+        /** @var array<string, array{edge: MovementEdge, quantity: int|float}> $available */
+        $available = [];
+        foreach ($edges as $edge) {
+            $edgeId = $this->edgeKey($edge);
+            $requested = isset($decisionQuantities[$edgeId])
+                ? min($quantity, $decisionQuantities[$edgeId])
+                : $quantity;
+            $movable = $this->limitMovable($inventory, $edge, $requested, $quantity, $step, $context);
+            if ($movable <= 0) {
+                continue;
+            }
+
+            $available[$edgeId] = ['edge' => $edge, 'quantity' => $movable];
+        }
+
+        return $available;
+    }
+
+    /**
+     * @param (callable(FlowContext): list<MovementEdge>)|EdgeFilterPolicyInterface $policy
+     *
+     * @return list<MovementEdge>
+     */
+    private function filterEdges(callable | EdgeFilterPolicyInterface $policy, FlowContext $context): array
+    {
+        if ($policy instanceof EdgeFilterPolicyInterface) {
+            return $policy->filterEdges($context);
+        }
+
+        return $policy($context);
+    }
+
+    /**
+     * @param (callable(FlowContext): list<MovementEdge>)|EdgeOrderingPolicyInterface $policy
+     *
+     * @return list<MovementEdge>
+     */
+    private function orderEdges(callable | EdgeOrderingPolicyInterface $policy, FlowContext $context): array
+    {
+        if ($policy instanceof EdgeOrderingPolicyInterface) {
+            return $policy->orderEdges($context);
+        }
+
+        return $policy($context);
+    }
+
+    /**
+     * @param (callable(FlowContext): list<AllocationDecision>)|AllocationPolicyInterface $policy
+     *
+     * @return list<AllocationDecision>
+     */
+    private function allocateEdges(callable | AllocationPolicyInterface $policy, FlowContext $context): array
+    {
+        if ($policy instanceof AllocationPolicyInterface) {
+            return $policy->allocate($context);
+        }
+
+        return $policy($context);
+    }
+
+    /**
+     * @param array<mixed> $context
+     */
+    private function limitMovable(
+        QuantityState $inventory,
+        MovementEdge $edge,
+        int | float $requested,
+        int | float $quantity,
+        FlowStep $step,
+        array $context,
+    ): int | float {
+        $available = $edge->from->isNil()
+            ? $requested
+            : min($requested, $inventory->get($edge->from));
+
+        $limit = $available;
+        $stepContext = new FlowContext($inventory->space(), [$edge], $inventory, $quantity, null, $context);
+
+        foreach ($step->quantityConstraintPolicies as $policy) {
+            if (!is_callable($policy) && !$policy instanceof QttyConstraintPolicyInterface) {
+                continue;
+            }
+
+            $policyLimit = $policy instanceof QttyConstraintPolicyInterface
+                ? $policy->constraint($edge, $stepContext)
+                : $policy($edge, $stepContext);
+
+            if (!is_int($policyLimit) && !is_float($policyLimit)) {
+                continue;
+            }
+
+            $limit = min($limit, $policyLimit);
+        }
+
+        return max(0, $limit);
+    }
+
+    private function applyMovement(QuantityState $inventory, MovementEdge $edge, int | float $quantity): QuantityState
+    {
+        $updated = $inventory->copy();
+
+        if (!$edge->from->isNil()) {
+            $updated->add($edge->from, -$quantity);
+        }
+
+        if (!$edge->to->isNil()) {
+            $updated->add($edge->to, $quantity);
+        }
+
+        return $updated;
+    }
+
+    private function edgeKey(MovementEdge $edge): string
+    {
+        return $edge->from->key.'>'.$edge->to->key.'|'.($edge->label ?? '').'|'.serialize($edge->attributes);
     }
 }

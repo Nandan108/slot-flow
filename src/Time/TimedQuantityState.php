@@ -65,11 +65,10 @@ final class TimedQuantityState
      */
     public function add(TimedSlot $slot, int | float $delta): void
     {
-        $current = $this->quantities[$slot->key] ?? 0;
+        $this->quantities[$slot->key] ??= 0;
 
-        $this->quantities[$slot->key] = \is_float($current) || \is_float($delta)
-            ? (float) $current + (float) $delta
-            : $current + $delta;
+        /** @psalm-suppress InvalidOperand */
+        $this->quantities[$slot->key] += $delta;
     }
 
     /**

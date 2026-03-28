@@ -4,8 +4,12 @@ declare(strict_types=1);
 
 namespace Nandan108\SlotFlow;
 
+use Nandan108\SlotFlow\Internal\SlotPattern;
+
 /**
  * One concrete slot in a slot space, or the special `nil` boundary slot.
+ *
+ * @psalm-import-type TSlotPattern from SlotSpace
  *
  * @api
  */
@@ -91,6 +95,14 @@ final class Slot
         $slot = $this->space->trySlot($newDimensions);
 
         return $slot ? [$this->space->slot($newDimensions)] : [];
+    }
+
+    /**
+     * @psalm-param TSlotPattern $pattern
+     */
+    public function matches(array | string | null $pattern): bool
+    {
+        return SlotPattern::from($pattern, $this->space)->matches($this);
     }
 
     /**

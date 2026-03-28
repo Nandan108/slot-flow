@@ -11,17 +11,12 @@ use Nandan108\SlotFlow\Results\QuantityStateDelta;
 /**
  * Immutable summary of one cascade execution.
  *
- * @template-covariant TQtty of int|float
- *
  * @api
  */
 final class MovementResult
 {
     /**
      * @param list<MovementEvent> $events
-     *
-     * @psalm-param list<MovementEvent<TQtty>> $events
-     * @psalm-param TQtty                      $remaining
      */
     public function __construct(
         public readonly array $events,

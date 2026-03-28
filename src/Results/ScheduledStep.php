@@ -82,7 +82,6 @@ final class ScheduledStep
             name: $name ?? ((null !== $label && '' !== $label) ? 'arrive:'.$label : 'arrive'),
             slot: $this->edge->to,
             quantity: $this->quantity,
-            scheduleStepId: $this->id,
         );
     }
 

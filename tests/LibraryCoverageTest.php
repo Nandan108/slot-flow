@@ -201,7 +201,6 @@ final class LibraryCoverageTest extends TestCase
             ],
             /** @param list<TRow> $rows */
             quantityGetter: static fn (array $rows): int => $rows[0]['qty'],
-            subjectIdGetter: null,
         );
 
         self::assertSame('A', $batch->items()[0]->subject);
@@ -242,8 +241,9 @@ final class LibraryCoverageTest extends TestCase
             self::assertSame('Movement result already set', $e->getMessage());
         }
 
+        $space->subjectKeyResolver(static fn (): string => '');
         $this->expectException(SlotFlowInvalidArgumentException::class);
-        $this->expectExceptionMessage('Subject ID must be a non-empty string.');
+        $this->expectExceptionMessage('Subject key must be a non-empty string.');
         /** @psalm-suppress InvalidArgument */
         QuantityStateBatch::fromRows(
             $space,
@@ -256,7 +256,6 @@ final class LibraryCoverageTest extends TestCase
             ],
             /** @param list<TRow> $rows */
             static fn (array $rows): int => $rows[0]['qty'],
-            static fn (): string => '',
         );
     }
 
@@ -294,7 +293,6 @@ final class LibraryCoverageTest extends TestCase
             'stt'   => ['fs', 'sd'],
         ]);
         $edge = new MovementEdge($space->slot('foo.fs'), $space->slot('bar.sd'));
-        /** @var MovementEvent<int> */
         $event = new MovementEvent($edge, 2, 5, 1);
         $nilEvent = new MovementEvent(new MovementEdge($space->nilSlot(), $space->slot('foo.fs')), 2, null, null);
         $complete = new MovementResult([$event], 0);
@@ -341,9 +339,7 @@ final class LibraryCoverageTest extends TestCase
             new BatchItem('C', 4, new QuantityState($space)),
         ]);
 
-        /** @var MovementEvent<int> $aEvent */
         $aEvent = new MovementEvent(new MovementEdge($space->slot('foo.fs'), $space->slot('bar.sd')), 2, 5, 1);
-        /** @var MovementEvent<int> $bEvent */
         $bEvent = new MovementEvent(new MovementEdge($space->nilSlot(), $space->slot('foo.fs')), 1, null, 2);
 
         $aResult = new MovementResult([$aEvent], 0);
@@ -459,7 +455,6 @@ final class LibraryCoverageTest extends TestCase
             ],
             /** @param list<TIfsRow> $rows */
             quantityGetter: static fn (array $rows): int => $rows[0]['qty'],
-            subjectIdGetter: null,
         );
 
         $cascade = Flow::define('cancel', static fn (Flow $cascade) => $cascade
@@ -802,6 +797,7 @@ final class LibraryCoverageTest extends TestCase
                 ));
             }));
 
+        $space->subjectKeyResolver(static fn (array $subject): string => 'allowed-sources');
         $result = (new MovementEngine())->execute(
             $inventory,
             $space,

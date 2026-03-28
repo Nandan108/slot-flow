@@ -7,6 +7,7 @@ namespace Nandan108\SlotFlow\Policies;
 use Nandan108\SlotFlow\Contracts\EdgeOrderingPolicyInterface;
 use Nandan108\SlotFlow\MovementEdge;
 use Nandan108\SlotFlow\Runtime\FlowContext;
+use Nandan108\SlotFlow\Slot;
 use Nandan108\SlotFlow\SlotSpace;
 
 /**
@@ -70,26 +71,39 @@ final class DimensionPriority implements EdgeOrderingPolicyInterface
         $edges = $ctx->edges;
         $rankByDimensionValue = $this->getRankByDimensionValue($ctx->space);
 
-        usort($edges, function (MovementEdge $left, MovementEdge $right) use ($rankByDimensionValue): int {
-            foreach ($rankByDimensionValue as $dimension => $rankByValue) {
-                $leftValue = $left->from->dimension($dimension);
-                $rightValue = $right->from->dimension($dimension);
-
-                $leftRank = is_string($leftValue) && array_key_exists($leftValue, $rankByValue)
-                    ? $rankByValue[$leftValue]
-                    : PHP_INT_MAX;
-                $rightRank = is_string($rightValue) && array_key_exists($rightValue, $rankByValue)
-                    ? $rankByValue[$rightValue]
-                    : PHP_INT_MAX;
-
-                if ($leftRank !== $rightRank) {
-                    return $leftRank <=> $rightRank;
-                }
-            }
-
-            return 0;
-        });
+        usort(
+            $edges,
+            fn (MovementEdge $left, MovementEdge $right): int => $this->compareSlots(
+                $left->from,
+                $right->from,
+                $rankByDimensionValue,
+            ),
+        );
 
         return $edges;
+    }
+
+    /**
+     * @param array<non-empty-string, array<non-empty-string, int>> $rankByDimensionValue
+     */
+    private function compareSlots(Slot $left, Slot $right, array $rankByDimensionValue): int
+    {
+        foreach ($rankByDimensionValue as $dimension => $rankByValue) {
+            $leftValue = $left->dimension($dimension);
+            $rightValue = $right->dimension($dimension);
+
+            $leftRank = is_string($leftValue) && array_key_exists($leftValue, $rankByValue)
+                ? $rankByValue[$leftValue]
+                : PHP_INT_MAX;
+            $rightRank = is_string($rightValue) && array_key_exists($rightValue, $rankByValue)
+                ? $rankByValue[$rightValue]
+                : PHP_INT_MAX;
+
+            if ($leftRank !== $rightRank) {
+                return $leftRank <=> $rightRank;
+            }
+        }
+
+        return 0;
     }
 }

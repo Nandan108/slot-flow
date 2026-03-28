@@ -9,6 +9,7 @@ use Nandan108\SlotFlow\Contracts\EdgeFilterPolicyInterface;
 use Nandan108\SlotFlow\Contracts\EdgeOrderingPolicyInterface;
 use Nandan108\SlotFlow\Contracts\ExecutionSolverInterface;
 use Nandan108\SlotFlow\Contracts\QttyConstraintPolicyInterface;
+use Nandan108\SlotFlow\Exceptions\SlotFlowInvalidArgumentException;
 use Nandan108\SlotFlow\Flow;
 use Nandan108\SlotFlow\Internal\FlowStep;
 use Nandan108\SlotFlow\MovementEdge;
@@ -17,10 +18,11 @@ use Nandan108\SlotFlow\QuantityState;
 use Nandan108\SlotFlow\Results\MovementEvent;
 use Nandan108\SlotFlow\Runtime\AllocationDecision;
 use Nandan108\SlotFlow\Runtime\FlowContext;
+use Nandan108\SlotFlow\Slot;
 use Nandan108\SlotFlow\SlotSpace;
 
 /**
- * Executes flows with deterministic greedy semantics.
+ * Executes movement flows directly with greedy semantics.
  *
  * @psalm-import-type TSlotPattern from SlotSpace
  *
@@ -55,7 +57,7 @@ final class GreedyFlowSolver implements ExecutionSolverInterface
                 break;
             }
 
-            $edges = $this->resolveStepEdges($space, $step, $appContext);
+            $edges = $this->resolveMoveEdges($space, $step, $appContext);
             $stepContext = new FlowContext($space, $edges, $state, $remaining, $subject, $appContext);
 
             foreach ($step->filterPolicies as $policy) {
@@ -94,22 +96,13 @@ final class GreedyFlowSolver implements ExecutionSolverInterface
                         break;
                     }
 
-                    $movable = $this->limitMovable(
-                        state: $state,
-                        edge: $edge,
-                        requested: $remaining,
-                        quantity: $remaining,
-                        step: $step,
-                        subject: $subject,
-                        context: $appContext,
-                    );
-
+                    $movable = $this->limitMovable($state, $edge, $remaining, $remaining, $step, $subject, $appContext);
                     if ($movable <= 0) {
                         continue;
                     }
 
-                    $events[] = $this->applyMovement($state, $edge, $movable);
-                    /** @psalm-suppress InvalidOperand, MixedOperand */
+                    $events[] = $this->applyMove($state, $edge, $movable);
+                    /** @psalm-suppress InvalidOperand */
                     $remaining -= $movable;
                 }
 
@@ -122,47 +115,40 @@ final class GreedyFlowSolver implements ExecutionSolverInterface
                 }
 
                 $requested = min($decision->quantity, $remaining);
-                $movable = $this->limitMovable(
-                    state: $state,
-                    edge: $decision->edge,
-                    requested: $requested,
-                    quantity: $remaining,
-                    step: $step,
-                    subject: $subject,
-                    context: $appContext,
-                );
-
+                $movable = $this->limitMovable($state, $decision->edge, $requested, $remaining, $step, $subject, $appContext);
                 if ($movable <= 0) {
                     continue;
                 }
 
-                $events[] = $this->applyMovement($state, $decision->edge, $movable);
-                /** @psalm-suppress InvalidOperand, MixedOperand */
+                $events[] = $this->applyMove($state, $decision->edge, $movable);
+                /** @psalm-suppress InvalidOperand */
                 $remaining -= $movable;
             }
         }
 
-        /** @psalm-suppress InvalidArgument */
         return new MovementResult($events, $remaining);
     }
 
     /**
+     * @param array<mixed> $context
+     *
      * @return list<MovementEdge>
      */
-    private function resolveStepEdges(SlotSpace $space, FlowStep $step, array $context): array
+    private function resolveMoveEdges(SlotSpace $space, FlowStep $step, array $context): array
     {
         if (null !== $step->edgeLabels) {
-            /** @var array{params?: array<string, non-empty-string>} $context */
-            $params = array_map('strval', $context['params'] ?? []);
-            $labels = array_map(
-                fn (string $label): string => $this->resolveStringParameter($label, $params),
-                $step->edgeLabels,
-            );
+            $params = $this->resolveStringParams($context);
+            $labels = array_values(array_filter(
+                array_map(
+                    fn (string $label): string => $this->resolveStringParameter($label, $params),
+                    $step->edgeLabels,
+                ),
+                static fn (string $label): bool => '' !== $label,
+            ));
 
             return $space->edgesByLabels($labels);
         }
 
-        /** @psalm-suppress ArgumentTypeCoercion */
         return array_values($space->edgesBetween(
             $this->resolvePatternParameters($step->from, $context),
             $this->resolvePatternParameters($step->to, $context),
@@ -170,30 +156,47 @@ final class GreedyFlowSolver implements ExecutionSolverInterface
     }
 
     /**
-     * @param array<mixed>                               $context
-     * @param string|array<int|string, string|null>|null $pattern
+     * @param array<mixed> $context
      *
-     * @psalm-param TSlotPattern $pattern
+     * @psalm-param Slot|TSlotPattern $pattern
      *
      * @psalm-return TSlotPattern
      */
-    private function resolvePatternParameters(string | array | null $pattern, array $context): string | array | null
+    private function resolvePatternParameters(Slot | string | array | null $pattern, array $context): string | array | null
     {
         if (null === $pattern) {
             return null;
         }
-        /** @var array{params?: array<string, non-empty-string>} $context */
-        $params = array_map('strval', $context['params'] ?? []);
 
-        if (is_string($pattern)) {
-            return $this->resolveStringParameter($pattern, $params);
+        if ($pattern instanceof Slot) {
+            return $pattern->key;
         }
 
+        $params = $this->resolveStringParams($context);
+
+        if (is_string($pattern)) {
+            $resolved = $this->resolveStringParameter($pattern, $params);
+            if ('' === $resolved) {
+                throw new SlotFlowInvalidArgumentException('Resolved slot pattern cannot be empty string.');
+            }
+
+            return $resolved;
+        }
+
+        /** @var array<int<0, max>|non-empty-string, non-empty-string|null> $resolved */
         $resolved = [];
         foreach ($pattern as $key => $value) {
-            $resolved[$key] = is_string($value)
-                ? $this->resolveStringParameter($value, $params)
-                : $value;
+            if (!is_string($value)) {
+                $resolved[$key] = $value;
+                continue;
+            }
+
+            $resolvedValue = $this->resolveStringParameter($value, $params);
+            if ('' === $resolvedValue) {
+                throw new SlotFlowInvalidArgumentException('Resolved slot pattern value cannot be empty string.');
+            }
+
+            $resolved[$key] = $resolvedValue;
         }
 
         return $resolved;
@@ -201,9 +204,6 @@ final class GreedyFlowSolver implements ExecutionSolverInterface
 
     /**
      * @param array<string, string> $params
-     * @param non-empty-string      $value
-     *
-     * @psalm-return non-empty-string
      */
     private function resolveStringParameter(string $value, array $params): string
     {
@@ -229,7 +229,29 @@ final class GreedyFlowSolver implements ExecutionSolverInterface
     }
 
     /**
-     * @param list<MovementEdge> $edges
+     * @param array<mixed> $context
+     *
+     * @return array<string, string>
+     */
+    private function resolveStringParams(array $context): array
+    {
+        /** @var array<array-key, scalar|null> $rawParams */
+        $rawParams = is_array($context['params'] ?? null) ? $context['params'] : [];
+        $params = [];
+        foreach ($rawParams as $name => $value) {
+            if (!is_string($name) || '' === $name || null === $value) {
+                continue;
+            }
+
+            $params[$name] = (string) $value;
+        }
+
+        return $params;
+    }
+
+    /**
+     * @param list<MovementEdge>                                                    $edges
+     * @param (callable(FlowContext): list<MovementEdge>)|EdgeFilterPolicyInterface $policy
      *
      * @return list<MovementEdge>
      */
@@ -239,19 +261,12 @@ final class GreedyFlowSolver implements ExecutionSolverInterface
             return $policy->filterEdges($context);
         }
 
-        /** @psalm-var mixed */
-        $result = $policy($context);
-
-        if (!is_array($result)) {
-            return $edges;
-        }
-
-        /** @var list<MovementEdge> $result */
-        return $result;
+        return $policy($context);
     }
 
     /**
-     * @param list<MovementEdge> $edges
+     * @param list<MovementEdge>                                                      $edges
+     * @param (callable(FlowContext): list<MovementEdge>)|EdgeOrderingPolicyInterface $policy
      *
      * @return list<MovementEdge>
      */
@@ -261,19 +276,12 @@ final class GreedyFlowSolver implements ExecutionSolverInterface
             return $policy->orderEdges($context);
         }
 
-        /** @psalm-var mixed */
-        $result = $policy($context);
-
-        if (!is_array($result)) {
-            return $edges;
-        }
-
-        /** @var list<MovementEdge> $result */
-        return $result;
+        return $policy($context);
     }
 
     /**
-     * @param list<MovementEdge> $edges
+     * @param list<MovementEdge>                                                          $edges
+     * @param (callable(FlowContext): list<AllocationDecision>)|AllocationPolicyInterface $policy
      *
      * @return list<AllocationDecision>
      */
@@ -283,15 +291,7 @@ final class GreedyFlowSolver implements ExecutionSolverInterface
             return $policy->allocate($context);
         }
 
-        /** @psalm-var mixed */
-        $result = $policy($context);
-
-        if (!is_array($result)) {
-            return [];
-        }
-
-        /** @var list<AllocationDecision> $result */
-        return $result;
+        return $policy($context);
     }
 
     /**
@@ -332,19 +332,29 @@ final class GreedyFlowSolver implements ExecutionSolverInterface
         return max(0, $limit);
     }
 
-    private function applyMovement(QuantityState $state, MovementEdge $edge, int | float $quantity): MovementEvent
-    {
-        $initialFrom = $edge->from->isNil() ? null : $state->get($edge->from);
-        $initialTo = $edge->to->isNil() ? null : $state->get($edge->to);
+    private function applyMove(
+        QuantityState $state,
+        MovementEdge $edge,
+        int | float $quantity,
+    ): MovementEvent {
+        $initialFrom = null;
+        $initialTo = null;
 
         if (!$edge->from->isNil()) {
+            $initialFrom = $state->get($edge->from);
             $state->add($edge->from, -$quantity);
         }
 
         if (!$edge->to->isNil()) {
+            $initialTo = $state->get($edge->to);
             $state->add($edge->to, $quantity);
         }
 
-        return new MovementEvent($edge, $quantity, $initialFrom, $initialTo);
+        return new MovementEvent(
+            edge: $edge,
+            quantity: $quantity,
+            initialFrom: $initialFrom,
+            initialTo: $initialTo,
+        );
     }
 }
