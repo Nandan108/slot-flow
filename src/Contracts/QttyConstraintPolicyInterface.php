@@ -12,7 +12,7 @@ use Nandan108\SlotFlow\Runtime\FlowContext;
  *
  * @api
  */
-interface QttyConstraintPolicyInterface
+interface QttyConstraintPolicyInterface extends PolicyInterface
 {
     /**
      * Return the maximum movable quantity for the given edge in context.

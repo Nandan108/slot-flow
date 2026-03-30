@@ -20,6 +20,7 @@ final class TimedSlotSpace
     /** @var array<string, TimedSlot> */
     private array $slots = [];
     private readonly ?TimedDurationResolverInterface $durationResolver;
+    private readonly ?DispatchCalendarInterface $dispatchCalendar;
 
     /**
      * Create one timed view over a base slot space and a discrete time axis.
@@ -28,10 +29,14 @@ final class TimedSlotSpace
         public readonly SlotSpace $baseSpace,
         public readonly TimeAxis $axis,
         ?callable $durationResolver = null,
+        DispatchCalendarInterface | callable | null $dispatchCalendar = null,
     ) {
         $this->durationResolver = null === $durationResolver
             ? null
             : self::normalizeDurationResolver($durationResolver);
+        $this->dispatchCalendar = null === $dispatchCalendar
+            ? null
+            : self::normalizeDispatchCalendar($dispatchCalendar);
     }
 
     /**
@@ -41,12 +46,14 @@ final class TimedSlotSpace
         SlotSpace $baseSpace,
         ?TimeAxis $axis = null,
         ?callable $durationResolver = null,
+        DispatchCalendarInterface | callable | null $dispatchCalendar = null,
     ): self {
         $axis ??= $baseSpace->timeAxis;
         if (null === $durationResolver) {
             $defaultDurationResolver = $baseSpace->getDurationResolver();
             $durationResolver = null === $defaultDurationResolver ? null : $defaultDurationResolver->resolve(...);
         }
+        $dispatchCalendar ??= $baseSpace->getDispatchCalendar();
 
         if (null === $axis) {
             throw new SlotFlowInvalidArgumentException(
@@ -55,7 +62,7 @@ final class TimedSlotSpace
             );
         }
 
-        return new self($baseSpace, $axis, $durationResolver);
+        return new self($baseSpace, $axis, $durationResolver, $dispatchCalendar);
     }
 
     /**
@@ -157,8 +164,9 @@ final class TimedSlotSpace
         }
 
         foreach ($baseEdges as $edge) {
-            $duration = $this->duration($edge, $from);
-            $arrival = $from->timeIndex + $duration;
+            $dispatchTime = $this->dispatchTime($edge, $from);
+            $duration = $this->duration($edge, $from, $dispatchTime);
+            $arrival = $dispatchTime + $duration;
             if ($arrival > $this->axis->horizon) {
                 continue;
             }
@@ -168,7 +176,12 @@ final class TimedSlotSpace
                 to: $this->slot($edge->to, $arrival),
                 baseEdge: $edge,
                 label: $edge->label,
-                attributes: ['duration' => $duration, 'timed-kind' => 'movement'] + $edge->attributes,
+                attributes: [
+                    'duration'      => $duration,
+                    'dispatch-time' => $dispatchTime,
+                    'wait-duration' => $dispatchTime - $from->timeIndex,
+                    'timed-kind'    => 'movement',
+                ] + $edge->attributes,
             );
         }
 
@@ -193,14 +206,31 @@ final class TimedSlotSpace
     /**
      * Resolve one base-edge duration into canonical bucket count.
      */
-    private function duration(MovementEdge $edge, TimedSlot $from): int
+    private function duration(MovementEdge $edge, TimedSlot $from, int $dispatchTime): int
     {
-        $context = new TimedDurationContext($this, $this->axis, $from, $edge);
+        $context = new TimedDurationContext($this, $this->axis, $from, $edge, $dispatchTime);
         $duration = null !== $this->durationResolver
             ? $this->durationResolver->resolve($edge, $context)
             : $this->defaultDurationValue($edge);
 
         return is_int($duration) ? $duration : $this->axis->parse($duration);
+    }
+
+    private function dispatchTime(MovementEdge $edge, TimedSlot $from): int
+    {
+        $context = new TimedDurationContext($this, $this->axis, $from, $edge, $from->timeIndex);
+        $dispatchTime = null !== $this->dispatchCalendar
+            ? $this->dispatchCalendar->dispatchTime($edge, $context)
+            : $from->timeIndex;
+
+        if ($dispatchTime < $from->timeIndex) {
+            throw new SlotFlowInvalidArgumentException(
+                'Dispatch calendar cannot move a departure earlier than the current timed slot.',
+                ['edge' => (string) $edge, 'dispatch_time' => $dispatchTime, 'from_time' => $from->timeIndex],
+            );
+        }
+
+        return $dispatchTime;
     }
 
     private static function normalizeDurationResolver(callable $durationResolver): TimedDurationResolverInterface
@@ -226,6 +256,38 @@ final class TimedSlotSpace
                 throw new SlotFlowInvalidArgumentException(
                     'Timed movement edge duration must be an int or time expression string.',
                     ['edge' => (string) $edge, 'duration' => $duration],
+                );
+            }
+        };
+    }
+
+    private static function normalizeDispatchCalendar(callable | DispatchCalendarInterface $dispatchCalendar): DispatchCalendarInterface
+    {
+        if ($dispatchCalendar instanceof DispatchCalendarInterface) {
+            return $dispatchCalendar;
+        }
+
+        return new class(\Closure::fromCallable($dispatchCalendar)) implements DispatchCalendarInterface {
+            private readonly \Closure $resolver;
+
+            public function __construct(\Closure $resolver)
+            {
+                $this->resolver = $resolver;
+            }
+
+            #[\Override]
+            public function dispatchTime(MovementEdge $edge, TimedDurationContext $context): int
+            {
+                /** @psalm-var mixed $dispatchTime */
+                $dispatchTime = ($this->resolver)($edge, $context);
+
+                if (is_int($dispatchTime)) {
+                    return $dispatchTime;
+                }
+
+                throw new SlotFlowInvalidArgumentException(
+                    'Dispatch calendar must resolve to an integer time index.',
+                    ['edge' => (string) $edge, 'dispatch_time' => $dispatchTime],
                 );
             }
         };

@@ -11,12 +11,15 @@ use Nandan108\SlotFlow\Internal\SlotPattern;
 use Nandan108\SlotFlow\Rules\EdgeRule;
 use Nandan108\SlotFlow\Rules\RuleSet;
 use Nandan108\SlotFlow\Rules\SlotRule;
+use Nandan108\SlotFlow\Time\DispatchCalendarInterface;
 use Nandan108\SlotFlow\Time\TimeAxis;
+use Nandan108\SlotFlow\Time\TimedDurationContext;
 use Nandan108\SlotFlow\Time\TimedDurationResolverInterface;
 
 /**
  * Defines the slot space, its dimensions, the slots that exist within it, and the edges and flows that operate on it.
  *
+ * @psalm-type TDurationResolverClosure = (\Closure(MovementEdge, TimedDurationContext): array-key)
  * @psalm-type TDimensionName = non-empty-string the name and value of a dimension must be non-empty strings
  * @psalm-type TDimensionValue = non-empty-string dimension values must be non-empty strings, and each dimension must have at least one value
  * @psalm-type TSlotKey = non-empty-string the serialized representation of a slot, used as a unique identifier, can be used as a slot pattern that matches exactly one slot
@@ -50,6 +53,7 @@ final class SlotSpace
     public SlotCodec $codec;
     public readonly ?TimeAxis $timeAxis;
     private ?TimedDurationResolverInterface $durationResolver = null;
+    private ?DispatchCalendarInterface $dispatchCalendar = null;
     private \Closure $subjectKeyResolver;
 
     /**
@@ -108,11 +112,14 @@ final class SlotSpace
     public static function defineTimed(
         array $dimensions,
         TimeAxis $timeAxis,
-        TimedDurationResolverInterface | callable | null $durationResolver = null,
+        TimedDurationResolverInterface | \Closure | null $durationResolver = null,
         ?string $codecClass = null,
     ): self {
+        /** @psalm-var TimedDurationResolverInterface|TDurationResolverClosure|null $typedDurationResolver */
+        $typedDurationResolver = $durationResolver;
+
         return (new self($dimensions, $timeAxis, null, $codecClass))
-            ->setDurationResolver($durationResolver);
+            ->setDurationResolver($typedDurationResolver);
     }
 
     /**
@@ -124,7 +131,7 @@ final class SlotSpace
     public function __construct(
         array $dimensions,
         ?TimeAxis $timeAxis = null,
-        TimedDurationResolverInterface | callable | null $durationResolver = null,
+        TimedDurationResolverInterface | \Closure | null $durationResolver = null,
         ?string $codecClass = null,
     ) {
         $this->timeAxis = $timeAxis;
@@ -149,7 +156,9 @@ final class SlotSpace
             $this->slotsByKey[$key] = new Slot($key, $values, $this);
         }
 
-        $this->setDurationResolver($durationResolver);
+        /** @psalm-var TimedDurationResolverInterface|TDurationResolverClosure|null $typedDurationResolver */
+        $typedDurationResolver = $durationResolver;
+        $this->setDurationResolver($typedDurationResolver);
     }
 
     public function getDurationResolver(): ?TimedDurationResolverInterface
@@ -157,10 +166,25 @@ final class SlotSpace
         return $this->durationResolver;
     }
 
-    public function setDurationResolver(
-        TimedDurationResolverInterface | callable | null $durationResolver,
-    ): self {
+    public function getDispatchCalendar(): ?DispatchCalendarInterface
+    {
+        return $this->dispatchCalendar;
+    }
+
+    /**
+     * @psalm-param TimedDurationResolverInterface|TDurationResolverClosure|null $durationResolver
+     */
+    public function setDurationResolver(mixed $durationResolver): self
+    {
         $this->durationResolver = self::normalizeDurationResolver($durationResolver);
+
+        return $this;
+    }
+
+    public function setDispatchCalendar(
+        DispatchCalendarInterface | callable | null $dispatchCalendar,
+    ): self {
+        $this->dispatchCalendar = self::normalizeDispatchCalendar($dispatchCalendar);
 
         return $this;
     }
@@ -215,13 +239,16 @@ final class SlotSpace
         return $this;
     }
 
-    private static function normalizeDurationResolver(
-        TimedDurationResolverInterface | callable | null $durationResolver,
-    ): ?TimedDurationResolverInterface {
+    /**
+     * @psalm-param TimedDurationResolverInterface|TDurationResolverClosure|null $durationResolver
+     */
+    private static function normalizeDurationResolver(mixed $durationResolver): ?TimedDurationResolverInterface
+    {
+        /** @psalm-suppress DocblockTypeContradiction */
         return match (true) {
             null === $durationResolver                                  => null,
             $durationResolver instanceof TimedDurationResolverInterface => $durationResolver,
-            default                                                     => new class(\Closure::fromCallable($durationResolver)) implements TimedDurationResolverInterface {
+            $durationResolver instanceof \Closure                       => new class($durationResolver) implements TimedDurationResolverInterface {
                 private readonly \Closure $resolver;
 
                 public function __construct(\Closure $resolver)
@@ -230,7 +257,7 @@ final class SlotSpace
                 }
 
                 #[\Override]
-                public function resolve(MovementEdge $edge, Time\TimedDurationContext $context): int | string
+                public function resolve(MovementEdge $edge, TimedDurationContext $context): int | string
                 {
                     /** @psalm-var mixed $duration */
                     $duration = ($this->resolver)($edge, $context);
@@ -242,6 +269,43 @@ final class SlotSpace
                     throw new SlotFlowInvalidArgumentException(
                         'Timed movement edge duration must be an int or time expression string.',
                         ['edge' => (string) $edge, 'duration' => $duration],
+                    );
+                }
+            },
+            default                                                     => throw new SlotFlowInvalidArgumentException(
+                'Timed duration resolver must be a Closure or TimedDurationResolverInterface instance.',
+                ['duration_resolver' => $durationResolver],
+            ),
+        };
+    }
+
+    private static function normalizeDispatchCalendar(
+        DispatchCalendarInterface | callable | null $dispatchCalendar,
+    ): ?DispatchCalendarInterface {
+        return match (true) {
+            null === $dispatchCalendar                             => null,
+            $dispatchCalendar instanceof DispatchCalendarInterface => $dispatchCalendar,
+            default                                                => new class(\Closure::fromCallable($dispatchCalendar)) implements DispatchCalendarInterface {
+                private readonly \Closure $resolver;
+
+                public function __construct(\Closure $resolver)
+                {
+                    $this->resolver = $resolver;
+                }
+
+                #[\Override]
+                public function dispatchTime(MovementEdge $edge, TimedDurationContext $context): int
+                {
+                    /** @psalm-var mixed $dispatchTime */
+                    $dispatchTime = ($this->resolver)($edge, $context);
+
+                    if (is_int($dispatchTime)) {
+                        return $dispatchTime;
+                    }
+
+                    throw new SlotFlowInvalidArgumentException(
+                        'Dispatch calendar must resolve to an integer time index.',
+                        ['edge' => (string) $edge, 'dispatch_time' => $dispatchTime],
                     );
                 }
             },

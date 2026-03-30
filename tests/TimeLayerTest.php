@@ -13,6 +13,7 @@ use Nandan108\SlotFlow\Rules\SlotRule;
 use Nandan108\SlotFlow\SlotSpace;
 use Nandan108\SlotFlow\Time\TimeAxis;
 use Nandan108\SlotFlow\Time\TimedDurationContext;
+use Nandan108\SlotFlow\Time\TimedDurationResolverInterface;
 use Nandan108\SlotFlow\Time\TimedMovementEdge;
 use Nandan108\SlotFlow\Time\TimedQuantityState;
 use Nandan108\SlotFlow\Time\TimedSlotSpace;
@@ -280,7 +281,17 @@ final class TimeLayerTest extends TestCase
 
     public function testTimedSlotSpaceCanResolveDurationFromSlotMetadata(): void
     {
-        $seenFrom = null;
+        $resolver = new class implements TimedDurationResolverInterface {
+            public ?string $seenFrom = null;
+
+            #[\Override]
+            public function resolve(MovementEdge $edge, TimedDurationContext $context): int | string
+            {
+                $this->seenFrom = $context->from->key;
+
+                return (string) ($edge->to->attributes['handling-duration'] ?? '0');
+            }
+        };
         $space = SlotSpace::defineTimed(
             dimensions: [
                 'loc' => ['sup', 'plant'],
@@ -288,11 +299,7 @@ final class TimeLayerTest extends TestCase
             ],
             timeAxis: TimeAxis::define(bucket: 'hour', horizon: 72, aliases: ['day' => 24]),
         )
-            ->setDurationResolver(static function (MovementEdge $edge, TimedDurationContext $context) use (&$seenFrom): string {
-                $seenFrom = $context->from->key;
-
-                return (string) ($edge->to->attributes['handling-duration'] ?? '0');
-            })
+            ->setDurationResolver($resolver)
             ->slotRules([
                 SlotRule::allow('*'),
                 SlotRule::allow('plant.raw', ['handling-duration' => '1d']),
@@ -309,7 +316,7 @@ final class TimeLayerTest extends TestCase
             ['sup.raw@h1', 'plant.raw@h24'],
             array_map(static fn (TimedMovementEdge $edge): string => $edge->to->key, $edges),
         );
-        self::assertSame('sup.raw@h0', $seenFrom);
+        self::assertSame('sup.raw@h0', $resolver->seenFrom);
         self::assertSame(24, $edges[1]->attributes['duration']);
     }
 

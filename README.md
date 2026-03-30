@@ -4,7 +4,7 @@
 ![Style](https://img.shields.io/badge/style-php--cs--fixer-brightgreen)
 ![Packagist](https://img.shields.io/packagist/v/nandan108/slot-flow)
 
-SlotFlow is a deterministic PHP engine for modeling and executing quantity flows across an explicit multidimensional state space.
+SlotFlow is a deterministic PHP engine for inventory and commerce operations that model quantity movement across an explicit multidimensional state space.
 
 ## Mental Model
 
@@ -23,7 +23,7 @@ When you request a quantity movement, SlotFlow:
 
 > SlotFlow makes quantity movements explicit, deterministic, and auditable.
 
-SlotFlow is intentionally not an ERP, fulfillment system, or workflow framework. It is the lower-level engine those systems can build on.
+SlotFlow is intentionally not a full ERP, OMS, or WMS. It is the lower-level engine those systems can build on for stock movement, allocation, backorders, and delivery promises.
 
 ## Core Concepts
 
@@ -35,7 +35,7 @@ SlotFlow is intentionally not an ERP, fulfillment system, or workflow framework.
 - A `QuantityState` stores the current quantity distribution for one subject across the slot space.
 - `MovementEngine` executes a requested quantity against current state and returns movement events plus any remainder.
 
-At its core, SlotFlow acts as a declarative execution engine over a constrained state space.
+At its core, SlotFlow acts as a declarative inventory-movement engine over a constrained state space.
 
 **Notes**
 
@@ -50,6 +50,8 @@ SlotFlow is a good fit when:
 - quantities exist in multiple states or locations
 - movement rules are non-trivial or evolving
 - allocation must be deterministic and explainable
+- you need to model backorders or delivery promises
+- multi-line orders may release in full, partial, threshold-based, or priority-based shipments
 - you need auditability (ledger-style tracking)
 
 It is likely overkill for simple stock counters or single-location systems.
@@ -150,6 +152,15 @@ The same policy also supports alternatives such as `'wh1|wh2'`, because priority
 
 Registered flow names pair especially well with parameterized templates: you define the flow once on the `SlotSpace`, then execute it by name with different `params` depending on the request.
 
+## Delivery Promises And Order Release
+
+SlotFlow can also plan timed delivery promises.
+
+- `ScheduleRequest` and `EarliestArrivalSolver` build one timed movement schedule for one subject quantity
+- `Demand`, `DemandLine`, `DemandScheduleRequest`, and `DemandScheduler` compose many subject schedules into one order-level promise
+- release policies such as `PartialShipmentPolicy`, `FullShipmentPolicy`, `ThresholdReleasePolicy`, and `PriorityReleasePolicy` decide how ready lines turn into shipments
+- timed slot spaces can also apply dispatch calendars, for example cutoff-time or no-weekend dispatch rules
+
 ## Execution Output
 
 SlotFlow computes movement. It does not persist it.
@@ -161,6 +172,7 @@ The main result shapes are:
 - `MovementResult::deltas()` for net per-slot current-state deltas
 - `MovementResult::ledgerEntries($context)` for append-only movement records
 - `MovementSchedule::$steps`, `MovementSchedule::$milestones`, and `MovementSchedule::deltas()` for time-based planning output
+- `DemandSchedule::$lines` and `DemandSchedule::$shipments` for multi-line order promise output
 - `QuantityStateBatch::deltas()` and `QuantityStateBatch::ledgerEntries($context)` for the same outputs across many subjects
 
 ## Terminology
@@ -199,7 +211,7 @@ That system handled:
 
 Over time, the limitations of a tightly coupled implementation became clear: movement rules, state representation, and execution logic were all intertwined.
 
-SlotFlow is an extraction of its core ideas as a **generic, composable flow engine**.
+SlotFlow is an extraction of its core ideas as a composable engine for inventory movement and promise calculation.
 
 For historical reference, the original implementation is preserved here:
 👉 [`docs/history/original-MPB-InventoryEngine.php`](docs/history/original-MPB-InventoryEngine.php)

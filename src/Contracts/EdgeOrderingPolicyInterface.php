@@ -12,7 +12,7 @@ use Nandan108\SlotFlow\Runtime\FlowContext;
  *
  * @api
  */
-interface EdgeOrderingPolicyInterface
+interface EdgeOrderingPolicyInterface extends PolicyInterface
 {
     /**
      * Return the candidate edges in preferred execution order.

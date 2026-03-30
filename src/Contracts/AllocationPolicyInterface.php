@@ -12,7 +12,7 @@ use Nandan108\SlotFlow\Runtime\FlowContext;
  *
  * @api
  */
-interface AllocationPolicyInterface
+interface AllocationPolicyInterface extends PolicyInterface
 {
     /**
      * Return allocation decisions for the current step context.

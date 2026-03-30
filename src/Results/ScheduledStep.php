@@ -4,6 +4,10 @@ declare(strict_types=1);
 
 namespace Nandan108\SlotFlow\Results;
 
+use Nandan108\SlotFlow\Contracts\PlannerRuleInterface;
+use Nandan108\SlotFlow\Contracts\PolicyInterface;
+use Nandan108\SlotFlow\Contracts\ShipmentCalendarRuleInterface;
+use Nandan108\SlotFlow\PolicyBuckets;
 use Nandan108\SlotFlow\Time\TimedMovementEdge;
 
 /**
@@ -20,6 +24,8 @@ final class ScheduledStep
         public readonly string $id,
         public readonly TimedMovementEdge $edge,
         public readonly int | float $quantity,
+        /** @var list<PolicyInterface> */
+        public readonly array $policies = [],
     ) {
     }
 
@@ -28,7 +34,10 @@ final class ScheduledStep
      */
     public function departureTime(): int
     {
-        return $this->edge->from->timeIndex;
+        /** @var int $departure */
+        $departure = $this->edge->attributes['dispatch-time'] ?? $this->edge->from->timeIndex;
+
+        return $departure;
     }
 
     /**
@@ -90,6 +99,47 @@ final class ScheduledStep
      */
     public function withQuantity(int | float $quantity): self
     {
-        return new self($this->id, $this->edge, $quantity);
+        return new self($this->id, $this->edge, $quantity, $this->policies);
+    }
+
+    /**
+     * Return all applicable policies for the scheduled step, merging step first and edge second.
+     *
+     * @return list<PolicyInterface>
+     */
+    public function policies(): array
+    {
+        $policies = [...$this->policies, ...$this->edge->policies()];
+
+        return PolicyBuckets::resolveCategory(
+            $policies,
+            PolicyBuckets::matchesAny(...),
+        );
+    }
+
+    /**
+     * Return the planner rules applicable to the scheduled step.
+     *
+     * @return list<PlannerRuleInterface>
+     */
+    public function plannerRules(): array
+    {
+        return PolicyBuckets::resolveCategory(
+            $this->policies(),
+            static fn (PolicyInterface $policy): bool => $policy instanceof PlannerRuleInterface,
+        );
+    }
+
+    /**
+     * Return shipment calendar rules applicable to the scheduled step.
+     *
+     * @return list<ShipmentCalendarRuleInterface>
+     */
+    public function shipmentCalendarRules(): array
+    {
+        return PolicyBuckets::resolveCategory(
+            $this->policies(),
+            static fn (PolicyInterface $policy): bool => $policy instanceof ShipmentCalendarRuleInterface,
+        );
     }
 }

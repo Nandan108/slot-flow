@@ -7,7 +7,11 @@ namespace Nandan108\SlotFlow\Internal;
 use Nandan108\SlotFlow\Contracts\AllocationPolicyInterface;
 use Nandan108\SlotFlow\Contracts\EdgeFilterPolicyInterface;
 use Nandan108\SlotFlow\Contracts\EdgeOrderingPolicyInterface;
+use Nandan108\SlotFlow\Contracts\PlannerRuleInterface;
+use Nandan108\SlotFlow\Contracts\PolicyInterface;
 use Nandan108\SlotFlow\Contracts\QttyConstraintPolicyInterface;
+use Nandan108\SlotFlow\Contracts\ShipmentCalendarRuleInterface;
+use Nandan108\SlotFlow\Contracts\ShipmentSplitRuleInterface;
 use Nandan108\SlotFlow\MovementEdge;
 use Nandan108\SlotFlow\Runtime\AllocationDecision;
 use Nandan108\SlotFlow\Runtime\FlowContext;
@@ -25,6 +29,10 @@ final class FlowStep
      * @param list<(callable(FlowContext): list<MovementEdge>)|EdgeFilterPolicyInterface>       $filterPolicies
      * @param list<(callable(MovementEdge, FlowContext): mixed)|QttyConstraintPolicyInterface>  $quantityConstraintPolicies
      * @param list<(callable(FlowContext): list<AllocationDecision>)|AllocationPolicyInterface> $allocationPolicies
+     * @param list<PolicyInterface>                                                             $policies
+     * @param list<PlannerRuleInterface>                                                        $plannerPolicies
+     * @param list<ShipmentCalendarRuleInterface>                                               $shipmentCalendarPolicies
+     * @param list<ShipmentSplitRuleInterface>                                                  $shipmentSplitPolicies
      * @param list<non-empty-string>|null                                                       $edgeLabels
      *
      * @psalm-param TSlotPattern $from
@@ -38,6 +46,10 @@ final class FlowStep
         public array $filterPolicies = [],
         public array $quantityConstraintPolicies = [],
         public array $allocationPolicies = [],
+        public array $policies = [],
+        public array $plannerPolicies = [],
+        public array $shipmentCalendarPolicies = [],
+        public array $shipmentSplitPolicies = [],
     ) {
 
     }

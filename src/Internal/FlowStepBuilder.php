@@ -7,9 +7,11 @@ namespace Nandan108\SlotFlow\Internal;
 use Nandan108\SlotFlow\Contracts\AllocationPolicyInterface;
 use Nandan108\SlotFlow\Contracts\EdgeFilterPolicyInterface;
 use Nandan108\SlotFlow\Contracts\EdgeOrderingPolicyInterface;
+use Nandan108\SlotFlow\Contracts\PolicyInterface;
 use Nandan108\SlotFlow\Contracts\QttyConstraintPolicyInterface;
 use Nandan108\SlotFlow\Flow;
 use Nandan108\SlotFlow\MovementEdge;
+use Nandan108\SlotFlow\PolicyBuckets;
 use Nandan108\SlotFlow\Runtime\AllocationDecision;
 use Nandan108\SlotFlow\Runtime\FlowContext;
 use Nandan108\SlotFlow\SlotSpace;
@@ -94,6 +96,18 @@ final class FlowStepBuilder
     public function allocate(AllocationPolicyInterface | callable $policy): self
     {
         $this->step->allocationPolicies[] = $policy;
+
+        return $this;
+    }
+
+    /**
+     * Add one or more typed policies and route each to the buckets used by the step.
+     *
+     * Named policies override earlier policies with the same name in the same category.
+     */
+    public function policies(PolicyInterface ...$policies): self
+    {
+        PolicyBuckets::applyToStep($this->step, $policies);
 
         return $this;
     }

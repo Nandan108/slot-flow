@@ -43,7 +43,7 @@ final class EarliestArrivalSolver implements ScheduleSolverInterface
         $flow = $request->flow;
         $quantity = $request->quantity;
         $resolvedTarget = $request->target;
-        $originTime = $request->originTime;
+        $startTime = $request->startTime;
         $params = $request->params;
 
         // Expand the timeless space into a timed search space and resolve the already-normalized flow steps.
@@ -53,13 +53,13 @@ final class EarliestArrivalSolver implements ScheduleSolverInterface
             return new MovementSchedule([], $quantity, []);
         }
 
-        /** @var list<array{source: Slot, quantity: int|float, path: list<TimedMovementEdge>, arrival: int}> $candidates */
+        /** @var list<array{source: Slot, quantity: int|float, path: list<array{step: FlowStep, edge: TimedMovementEdge}>, arrival: int}> $candidates */
         $candidates = [];
         // For each currently stocked source in the first step, search the earliest full timed path to the target.
         foreach ($this->candidateSourceSlots($steps[0]['edges'], $state, $quantity) as $source) {
             $plan = $this->earliestPath(
                 timedSpace: $timedSpace,
-                start: $timedSpace->slot($source['slot'], $originTime),
+                start: $timedSpace->slot($source['slot'], $startTime),
                 startingQuantity: $source['quantity'],
                 startingState: $state->copy(),
                 stepEdges: $steps,
@@ -72,7 +72,7 @@ final class EarliestArrivalSolver implements ScheduleSolverInterface
             }
 
             $path = $plan['path'];
-            $lastEdge = $path[count($path) - 1];
+            $lastEdge = $path[count($path) - 1]['edge'];
             $candidates[] = [
                 'source'   => $source['slot'],
                 'quantity' => $plan['quantity'],
@@ -101,9 +101,9 @@ final class EarliestArrivalSolver implements ScheduleSolverInterface
             }
 
             $allocated = min($candidate['quantity'], $remaining);
-            foreach ($candidate['path'] as $edge) {
+            foreach ($candidate['path'] as $pathStep) {
                 ++$stepId;
-                $scheduledStep = new ScheduledStep('sched-'.$stepId, $edge, $allocated);
+                $scheduledStep = new ScheduledStep('sched-'.$stepId, $pathStep['edge'], $allocated, $pathStep['step']->policies);
                 $scheduledSteps[] = $scheduledStep;
                 $milestones[] = $scheduledStep->milestone();
             }
@@ -199,7 +199,7 @@ final class EarliestArrivalSolver implements ScheduleSolverInterface
      * @param list<array{step: FlowStep, edges: list<MovementEdge>}> $stepEdges
      * @param array<string, string>                                  $params
      *
-     * @return ?array{path: list<TimedMovementEdge>, quantity: int|float}
+     * @return ?array{path: list<array{step: FlowStep, edge: TimedMovementEdge}>, quantity: int|float}
      */
     private function earliestPath(
         TimedSlotSpace $timedSpace,
@@ -210,7 +210,7 @@ final class EarliestArrivalSolver implements ScheduleSolverInterface
         Slot $target,
         array $params,
     ): ?array {
-        /** @var array<string, array{slot: TimedSlot, path: list<TimedMovementEdge>, quantity: int|float, inventory: QuantityState}> $candidates */
+        /** @var array<string, array{slot: TimedSlot, path: list<array{step: FlowStep, edge: TimedMovementEdge}>, quantity: int|float, inventory: QuantityState}> $candidates */
         $candidates = [
             $start->key => [
                 'slot'      => $start,
@@ -225,7 +225,7 @@ final class EarliestArrivalSolver implements ScheduleSolverInterface
             $edgesForStep = $stepData['edges'];
 
             $isFinalStep = $index === array_key_last($stepEdges);
-            /** @var array<string, array{slot: TimedSlot, path: list<TimedMovementEdge>, quantity: int|float, inventory: QuantityState}> $next */
+            /** @var array<string, array{slot: TimedSlot, path: list<array{step: FlowStep, edge: TimedMovementEdge}>, quantity: int|float, inventory: QuantityState}> $next */
             $next = [];
 
             foreach ($candidates as $candidate) {
@@ -260,7 +260,7 @@ final class EarliestArrivalSolver implements ScheduleSolverInterface
                         continue;
                     }
 
-                    $candidatePath = [...$candidate['path'], $timedEdge];
+                    $candidatePath = [...$candidate['path'], ['step' => $flowStep, 'edge' => $timedEdge]];
                     $toKey = $timedEdge->to->key;
                     if (
                         !isset($next[$toKey])
@@ -287,7 +287,7 @@ final class EarliestArrivalSolver implements ScheduleSolverInterface
             $candidates = $next;
         }
 
-        /** @var ?array{slot: TimedSlot, path: list<TimedMovementEdge>, quantity: int|float, inventory: QuantityState} $best */
+        /** @var ?array{slot: TimedSlot, path: list<array{step: FlowStep, edge: TimedMovementEdge}>, quantity: int|float, inventory: QuantityState} $best */
         $best = null;
         foreach ($candidates as $candidate) {
             if (

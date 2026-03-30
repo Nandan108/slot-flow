@@ -85,6 +85,10 @@ class Flow
                 filterPolicies: $step->filterPolicies,
                 quantityConstraintPolicies: $step->quantityConstraintPolicies,
                 allocationPolicies: $step->allocationPolicies,
+                policies: $step->policies,
+                plannerPolicies: $step->plannerPolicies,
+                shipmentCalendarPolicies: $step->shipmentCalendarPolicies,
+                shipmentSplitPolicies: $step->shipmentSplitPolicies,
             ),
             $steps,
         );

@@ -12,7 +12,7 @@ use Nandan108\SlotFlow\Runtime\FlowContext;
  *
  * @api
  */
-interface EdgeFilterPolicyInterface
+interface EdgeFilterPolicyInterface extends PolicyInterface
 {
     /**
      * Return the subset of edges that should remain available.

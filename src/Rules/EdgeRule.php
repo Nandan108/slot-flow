@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace Nandan108\SlotFlow\Rules;
 
+use Nandan108\SlotFlow\Contracts\PlannerRuleInterface;
+use Nandan108\SlotFlow\Contracts\PolicyInterface;
+use Nandan108\SlotFlow\PolicyBuckets;
 use Nandan108\SlotFlow\SlotSpace;
 
 /**
@@ -72,6 +75,28 @@ final class EdgeRule
     public function meta(array $attributes): self
     {
         return new self($this->allow, $this->from, $this->to, $this->label, $attributes + $this->attributes);
+    }
+
+    /**
+     * Attach planner-rule declarations that shipment planners may evaluate later.
+     */
+    public function plannerRules(PlannerRuleInterface ...$rules): self
+    {
+        return $this->policies(...$rules);
+    }
+
+    /**
+     * Attach typed planner policies that shipment planners may evaluate later.
+     */
+    public function policies(PolicyInterface ...$policies): self
+    {
+        return $policies ? new self(
+            $this->allow,
+            $this->from,
+            $this->to,
+            $this->label,
+            PolicyBuckets::mergeEdgeAttributes($this->attributes, $policies),
+        ) : $this;
     }
 
     /**

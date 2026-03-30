@@ -18,6 +18,7 @@ final class TimedDurationContext
         public readonly TimeAxis $axis,
         public readonly TimedSlot $from,
         public readonly MovementEdge $edge,
+        public readonly int $earliestDispatchTime,
     ) {
     }
 }

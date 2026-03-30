@@ -11,9 +11,11 @@ use Nandan108\SlotFlow\Internal\SlotPattern;
  *
  * @psalm-import-type TSlotPattern from SlotSpace
  *
+ * @implements \ArrayAccess<int|string, non-empty-string>
+ *
  * @api
  */
-final class Slot
+final class Slot implements \ArrayAccess
 {
     /**
      * @param non-empty-string                           $key
@@ -123,5 +125,38 @@ final class Slot
     public function __toString(): string
     {
         return $this->key;
+    }
+
+    #[\Override]
+    public function offsetExists(mixed $offset): bool
+    {
+        return match (true) {
+            null === $this->dimensions => false,
+            is_string($offset)         => array_key_exists($offset, $this->dimensions),
+            is_int($offset)            => $offset >= 0 && $offset < count($this->dimensions),
+        };
+    }
+
+    #[\Override]
+    public function offsetGet(mixed $offset): ?string
+    {
+        /** @psalm-suppress MixedArrayOffset */
+        return match (true) {
+            null === $this->dimensions => null,
+            is_string($offset)         => $this->dimensions[$offset] ?? null,
+            is_int($offset)            => array_values($this->dimensions)[$offset] ?? null,
+        };
+    }
+
+    #[\Override]
+    public function offsetSet(mixed $offset, mixed $value): void
+    {
+        throw new \LogicException('Slot dimensions are immutable.');
+    }
+
+    #[\Override]
+    public function offsetUnset(mixed $offset): void
+    {
+        throw new \LogicException('Slot dimensions are immutable.');
     }
 }

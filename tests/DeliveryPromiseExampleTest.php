@@ -6,6 +6,7 @@ namespace Tests;
 
 use Nandan108\SlotFlow\Contracts\ScheduleSolverInterface;
 use Nandan108\SlotFlow\Flow;
+use Nandan108\SlotFlow\MovementEdge;
 use Nandan108\SlotFlow\MovementEngine;
 use Nandan108\SlotFlow\MovementSchedule;
 use Nandan108\SlotFlow\QuantityState;
@@ -15,6 +16,7 @@ use Nandan108\SlotFlow\ScheduleRequest;
 use Nandan108\SlotFlow\SlotSpace;
 use Nandan108\SlotFlow\Solvers\EarliestArrivalSolver;
 use Nandan108\SlotFlow\Time\TimeAxis;
+use Nandan108\SlotFlow\Time\TimedDurationContext;
 use Nandan108\SlotFlow\Time\TimedMovementEdge;
 use PHPUnit\Framework\TestCase;
 use Tests\Fixtures\DeliveryPromiseExample;
@@ -101,6 +103,41 @@ final class DeliveryPromiseExampleTest extends TestCase
         self::assertCount(1, $schedule->steps);
         self::assertTrue($schedule->steps[0]->edge->from->isNil());
         self::assertSame('cust.fs@h0', $schedule->steps[0]->edge->to->key);
+    }
+
+    public function testEarliestArrivalSolverCanHonorDispatchCalendarsFromTheRequestStartTime(): void
+    {
+        $space = SlotSpace::defineTimed(
+            dimensions: [
+                'loc' => ['wh1', 'cust'],
+                'stt' => ['fs', 'sd'],
+            ],
+            timeAxis: new TimeAxis('hour', 24 * 7, ['day' => 24]),
+        )->edgeRules([
+            EdgeRule::allowLabeled('ship', 'wh1.fs', 'cust.sd', ['duration' => '1d']),
+        ])->flow(
+            'ship',
+            static fn (Flow $flow) => $flow->stepByLabeledEdges('ship'),
+        )->setDispatchCalendar(static function (MovementEdge $edge, TimedDurationContext $context): int {
+            if ($context->earliestDispatchTime % 24 < 16) {
+                return $context->earliestDispatchTime;
+            }
+
+            return ((int) floor($context->earliestDispatchTime / 24) + 1) * 24 + 8;
+        });
+
+        $schedule = (new EarliestArrivalSolver())->schedule(new ScheduleRequest(
+            state: new QuantityState($space, [['wh1.fs', 1]]),
+            space: $space,
+            flow: 'ship',
+            quantity: 1,
+            target: 'cust.sd',
+            startTime: 17,
+        ));
+
+        self::assertSame(32, $schedule->steps[0]->departureTime());
+        self::assertSame(56, $schedule->steps[0]->arrivalTime());
+        self::assertSame('cust.sd@2d8h', $schedule->lastMilestone()?->slot->humanKey());
     }
 
     public function testEarliestArrivalSolverHonorsStepFiltersUsedByExecution(): void
