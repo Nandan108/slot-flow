@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Nandan108\SlotFlow;
 
+use Nandan108\SlotFlow\Exceptions\SlotFlowInvalidArgumentException;
+
 /**
  * Immutable request for one planning-oriented schedule computation.
  *
@@ -30,7 +32,7 @@ final class ScheduleRequest
         Flow | string $flow,
         public readonly int | float $quantity,
         Slot | string $target,
-        int | string $startTime = 0,
+        \DateTimeImmutable | int | string $startTime = 0,
         array $params = [],
     ) {
         // Resolve the flow from either a Flow instance, a string key, or the space's default flow if only a space is provided.
@@ -40,9 +42,18 @@ final class ScheduleRequest
         $this->target = $space->slot($target);
 
         // Parse the request start time using the space's time axis if available, otherwise default to integer parsing.
-        $this->startTime = $space->timeAxis?->parse($startTime) ?? (
-            is_int($startTime) ? $startTime : (int) $startTime
-        );
+        if (null !== $space->timeAxis) {
+            $this->startTime = $space->timeAxis->parse($startTime);
+        } elseif (is_int($startTime)) {
+            $this->startTime = $startTime;
+        } elseif (is_string($startTime) && ctype_digit($startTime)) {
+            $this->startTime = (int) $startTime;
+        } else {
+            throw new SlotFlowInvalidArgumentException(
+                'Schedule requests without a TimeAxis require an integer bucket start time.',
+                ['start_time' => $startTime],
+            );
+        }
         $this->originTime = $this->startTime;
 
         // Normalize all params to strings for easier downstream handling, since they are primarily intended for use as string keys.

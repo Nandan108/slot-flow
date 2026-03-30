@@ -21,7 +21,7 @@ final class TimedQuantityState
     /**
      * Create one timed quantity state from timed-slot quantity tuples.
      *
-     * @param list<array{0: TimedSlot|Slot|string, 1: int|float, 2?: int|string|null}> $tuples
+     * @param list<array{0: TimedSlot|Slot|string, 1: int|float, 2?: \DateTimeImmutable|int|string|null}> $tuples
      */
     public function __construct(
         public readonly TimedSlotSpace $space,
@@ -40,7 +40,7 @@ final class TimedQuantityState
     public static function fromQuantityState(
         TimedSlotSpace $space,
         QuantityState $state,
-        int | string $time = 0,
+        \DateTimeImmutable | int | string $time = 0,
     ): self {
         $tuples = [];
         foreach ($state->all() as $slotKey => $quantity) {
@@ -95,7 +95,7 @@ final class TimedQuantityState
     /**
      * Resolve constructor tuple input into one concrete timed slot instance.
      */
-    private function resolveTimedSlot(TimedSlot | Slot | string | null $slot, int | string | null $time): TimedSlot
+    private function resolveTimedSlot(TimedSlot | Slot | string | null $slot, \DateTimeImmutable | int | string | null $time): TimedSlot
     {
         if ($slot instanceof TimedSlot) {
             return $slot;

@@ -68,7 +68,7 @@ final class TimedSlotSpace
     /**
      * Expand a base quantity state into this timed slot space at one origin time.
      */
-    public function timedQuantityState(QuantityState $state, int | string $time = 0): TimedQuantityState
+    public function timedQuantityState(QuantityState $state, \DateTimeImmutable | int | string $time = 0): TimedQuantityState
     {
         return TimedQuantityState::fromQuantityState($this, $state, $time);
     }
@@ -76,7 +76,7 @@ final class TimedSlotSpace
     /**
      * Resolve one timed slot from either `(slot, time)` input or a serialized `slot@time` key.
      */
-    public function slot(Slot | string | null $slot, int | string | null $time = null): TimedSlot
+    public function slot(Slot | string | null $slot, \DateTimeImmutable | int | string | null $time = null): TimedSlot
     {
         if (is_string($slot) && str_contains($slot, '@')) {
             $parts = explode('@', $slot, 2);
@@ -193,7 +193,7 @@ final class TimedSlotSpace
      *
      * @return list<TimedSlot>
      */
-    public function slotsAt(int | string $time): array
+    public function slotsAt(\DateTimeImmutable | int | string $time): array
     {
         $timeIndex = $this->axis->parse($time);
 

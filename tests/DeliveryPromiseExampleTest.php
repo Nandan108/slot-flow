@@ -87,7 +87,7 @@ final class DeliveryPromiseExampleTest extends TestCase
                 'loc' => ['cust'],
                 'stt' => ['fs'],
             ],
-            timeAxis: new TimeAxis('hour', 24),
+            timeAxis: TimeAxis::define('hour', 24),
         );
         $flow = Flow::define('create-stock', static fn (Flow $flow) => $flow->create('cust.fs'));
 
@@ -112,7 +112,7 @@ final class DeliveryPromiseExampleTest extends TestCase
                 'loc' => ['wh1', 'cust'],
                 'stt' => ['fs', 'sd'],
             ],
-            timeAxis: new TimeAxis('hour', 24 * 7, ['day' => 24]),
+            timeAxis: TimeAxis::define('hour', 24 * 7, ['day' => 24]),
         )->edgeRules([
             EdgeRule::allowLabeled('ship', 'wh1.fs', 'cust.sd', ['duration' => '1d']),
         ])->flow(
@@ -147,7 +147,7 @@ final class DeliveryPromiseExampleTest extends TestCase
                 'loc' => ['src', 'dest'],
                 'stt' => ['fs'],
             ],
-            timeAxis: new TimeAxis('hour', 24),
+            timeAxis: TimeAxis::define('hour', 24),
         )->edgeRules([
             EdgeRule::allowLabeled('ship', 'src.fs', 'dest.fs'),
         ]);
@@ -190,7 +190,7 @@ final class DeliveryPromiseExampleTest extends TestCase
                 'loc' => ['cust'],
                 'stt' => ['fs'],
             ],
-            timeAxis: new TimeAxis('hour', 24),
+            timeAxis: TimeAxis::define('hour', 24),
         );
         $flow = Flow::define('create-stock', static fn (Flow $flow) => $flow->create('cust.fs'));
         $createSchedule = (new EarliestArrivalSolver())->schedule(new ScheduleRequest(
@@ -229,7 +229,7 @@ final class DeliveryPromiseExampleTest extends TestCase
                 'loc' => ['cust'],
                 'stt' => ['fs'],
             ],
-            timeAxis: new TimeAxis('hour', 24),
+            timeAxis: TimeAxis::define('hour', 24),
         );
         $flow = Flow::define('create-stock', static fn (Flow $flow) => $flow->create('cust.fs'));
         $schedule = (new EarliestArrivalSolver())->schedule(new ScheduleRequest(
@@ -258,7 +258,7 @@ final class DeliveryPromiseExampleTest extends TestCase
                 'loc' => ['src', 'dest'],
                 'stt' => ['fs'],
             ],
-            timeAxis: new TimeAxis('hour', 24),
+            timeAxis: TimeAxis::define('hour', 24),
         )->edgeRules([
             EdgeRule::allowLabeled('ship', 'src.fs', 'dest.fs', ['duration' => 1]),
         ]);

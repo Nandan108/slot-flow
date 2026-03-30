@@ -76,7 +76,7 @@ final class DeliveryPromiseExample
                 'own'   => ['S', 'P'],
                 'state' => ['fs', 'sd'],
             ],
-            timeAxis: new TimeAxis(
+            timeAxis: TimeAxis::define(
                 bucket: 'hour',
                 horizon: 24 * 14,
                 aliases: ['day' => 24, 'shift' => 8],

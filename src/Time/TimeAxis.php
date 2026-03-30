@@ -34,17 +34,23 @@ final class TimeAxis
 
     /** @var list<non-empty-string> */
     public readonly array $humanKeyParts;
+    public readonly int $secondsInBucket;
+    public readonly \DateTimeImmutable $timeZero;
 
     /**
      * Create one discrete time axis and validate its bucket and alias shorthand scheme.
      *
-     * @param string                       $bucket        canonical name of the base time unit, such as "hour". First letter is used as the default shorthand, such as "h".
-     * @param int                          $horizon       maximum time index allowed on this axis (inclusive)
-     * @param array<non-empty-string, int> $aliases       map of human-friendly alias => bucket multiplier. Value may be suffixed with a shorthand letter, such as `day: d` to specify the alias shorthand explicitly (otherwise derived from first letter of alias).
-     * @param list<non-empty-string>|null  $humanKeyParts ordered human-key shorthands such as ['d', 'h']
+     * @param string                       $bucket          canonical name of the base time unit, such as "hour". First letter is used as the default shorthand, such as "h".
+     * @param int                          $secondsInBucket size of one bucket in seconds
+     * @param \DateTimeImmutable           $timeZero        anchor instant for bucket index 0; normalized down to the nearest bucket boundary
+     * @param int                          $horizon         maximum time index allowed on this axis (inclusive)
+     * @param array<non-empty-string, int> $aliases         map of human-friendly alias => bucket multiplier. Value may be suffixed with a shorthand letter, such as `day: d` to specify the alias shorthand explicitly (otherwise derived from first letter of alias).
+     * @param list<non-empty-string>|null  $humanKeyParts   ordered human-key shorthands such as ['d', 'h']
      */
     public function __construct(
         string $bucket,
+        int $secondsInBucket,
+        \DateTimeImmutable $timeZero,
         public readonly int $horizon,
         array $aliases = [],
         ?array $humanKeyParts = null,
@@ -53,6 +59,13 @@ final class TimeAxis
             throw new SlotFlowInvalidArgumentException(
                 'Time horizon must be zero or greater.',
                 ['horizon' => $horizon],
+            );
+        }
+
+        if ($secondsInBucket <= 0) {
+            throw new SlotFlowInvalidArgumentException(
+                'Time bucket size must be greater than zero seconds.',
+                ['seconds_in_bucket' => $secondsInBucket],
             );
         }
 
@@ -73,6 +86,8 @@ final class TimeAxis
         };
 
         [$this->bucket, $this->bucketShorthand] = $parseUnit('Time bucket', $bucket);
+        $this->secondsInBucket = $secondsInBucket;
+        $this->timeZero = $this->normalizeTimeZero($timeZero);
 
         /** @var array<non-empty-string, int> $normalizedAliases */
         $normalizedAliases = [];
@@ -120,9 +135,49 @@ final class TimeAxis
      * @param array<non-empty-string, int> $aliases
      * @param list<non-empty-string>|null  $humanKeyParts
      */
-    public static function define(string $bucket, int $horizon, array $aliases = [], ?array $humanKeyParts = null): self
-    {
-        return new self($bucket, $horizon, $aliases, $humanKeyParts);
+    public static function define(
+        string $bucket,
+        int $horizon,
+        array $aliases = [],
+        ?array $humanKeyParts = null,
+        ?\DateTimeImmutable $timeZero = null,
+        ?int $secondsInBucket = null,
+    ): self {
+        return new self(
+            bucket: $bucket,
+            secondsInBucket: $secondsInBucket ?? self::defaultSecondsInBucket($bucket),
+            timeZero: $timeZero ?? new \DateTimeImmutable('@0'),
+            horizon: $horizon,
+            aliases: $aliases,
+            humanKeyParts: $humanKeyParts,
+        );
+    }
+
+    /**
+     * Build one time axis anchored to the current wall-clock instant.
+     *
+     * The provided instant is normalized down to the nearest bucket boundary so
+     * bucket index 0 always starts on a canonical bucket edge.
+     *
+     * @param array<non-empty-string, int> $aliases
+     * @param list<non-empty-string>|null  $humanKeyParts
+     */
+    public static function startingNow(
+        string $bucket,
+        int $horizon,
+        array $aliases = [],
+        ?array $humanKeyParts = null,
+        ?\DateTimeImmutable $now = null,
+        ?int $secondsInBucket = null,
+    ): self {
+        return new self(
+            bucket: $bucket,
+            secondsInBucket: $secondsInBucket ?? self::defaultSecondsInBucket($bucket),
+            timeZero: $now ?? new \DateTimeImmutable(),
+            horizon: $horizon,
+            aliases: $aliases,
+            humanKeyParts: $humanKeyParts,
+        );
     }
 
     /**
@@ -143,7 +198,7 @@ final class TimeAxis
     /**
      * Return one human-readable time key, preferring larger configured units first.
      */
-    public function humanKey(int | string $value): string
+    public function humanKey(int | string | \DateTimeImmutable $value): string
     {
         $index = $this->parse($value);
         if (0 === $index) {
@@ -178,7 +233,7 @@ final class TimeAxis
      *
      * Examples: `h12`, `d3`, `d3s1`, `12`.
      */
-    public function parse(int | string $value): int
+    public function parse(int | string | \DateTimeImmutable $value): int
     {
         if (is_int($value)) {
             if ($value < 0) {
@@ -189,6 +244,21 @@ final class TimeAxis
             }
 
             return $value;
+        }
+
+        if ($value instanceof \DateTimeImmutable) {
+            $offsetSeconds = $value->getTimestamp() - $this->timeZero->getTimestamp();
+            if ($offsetSeconds < 0) {
+                throw new SlotFlowInvalidArgumentException(
+                    'Time values must not resolve before the axis time zero.',
+                    [
+                        'time_zero' => $this->timeZero->format(DATE_ATOM),
+                        'value'     => $value->format(DATE_ATOM),
+                    ],
+                );
+            }
+
+            return intdiv($offsetSeconds, $this->secondsInBucket);
         }
 
         if ('' === $value) {
@@ -238,9 +308,36 @@ final class TimeAxis
     }
 
     /**
+     * Return the first bucket index at or after the given value.
+     */
+    public function ceil(int | string | \DateTimeImmutable $value): int
+    {
+        if (!$value instanceof \DateTimeImmutable) {
+            return $this->parse($value);
+        }
+
+        $offsetSeconds = $value->getTimestamp() - $this->timeZero->getTimestamp();
+        if ($offsetSeconds < 0) {
+            throw new SlotFlowInvalidArgumentException(
+                'Time values must not resolve before the axis time zero.',
+                [
+                    'time_zero' => $this->timeZero->format(DATE_ATOM),
+                    'value'     => $value->format(DATE_ATOM),
+                ],
+            );
+        }
+
+        if (0 === $offsetSeconds % $this->secondsInBucket) {
+            return intdiv($offsetSeconds, $this->secondsInBucket);
+        }
+
+        return intdiv($offsetSeconds + $this->secondsInBucket - 1, $this->secondsInBucket);
+    }
+
+    /**
      * Normalize any accepted time expression to canonical `bucket shorthand + index`.
      */
-    public function normalize(int | string $value): string
+    public function normalize(int | string | \DateTimeImmutable $value): string
     {
         return $this->key($this->parse($value));
     }
@@ -248,9 +345,23 @@ final class TimeAxis
     /**
      * Return true when the given time expression resolves within the configured horizon.
      */
-    public function contains(int | string $value): bool
+    public function contains(int | string | \DateTimeImmutable $value): bool
     {
+        if ($value instanceof \DateTimeImmutable && $value->getTimestamp() < $this->timeZero->getTimestamp()) {
+            return false;
+        }
+
         return $this->parse($value) <= $this->horizon;
+    }
+
+    /**
+     * Return the bucket-aligned datetime for one resolved bucket index or accepted input.
+     */
+    public function dateTime(int | string | \DateTimeImmutable $value): \DateTimeImmutable
+    {
+        $seconds = $this->parse($value) * $this->secondsInBucket;
+
+        return $this->timeZero->setTimestamp($this->timeZero->getTimestamp() + $seconds);
     }
 
     /**
@@ -295,5 +406,37 @@ final class TimeAxis
         }
 
         return $normalized;
+    }
+
+    private function normalizeTimeZero(\DateTimeImmutable $timeZero): \DateTimeImmutable
+    {
+        $timestamp = $timeZero->getTimestamp();
+        $quotient = intdiv($timestamp, $this->secondsInBucket);
+        if ($timestamp < 0 && 0 !== $timestamp % $this->secondsInBucket) {
+            --$quotient;
+        }
+        $normalized = $quotient * $this->secondsInBucket;
+
+        return $timeZero->setTimestamp($normalized);
+    }
+
+    private static function defaultSecondsInBucket(string $bucket): int
+    {
+        [$normalizedBucket] = strtolower($bucket) === $bucket
+            ? [$bucket]
+            : [strtolower($bucket)];
+
+        return match ($normalizedBucket) {
+            'second' => 1,
+            'minute' => 60,
+            'hour'   => 3600,
+            'day'    => 86400,
+            'week'   => 604800,
+            'tick'   => 1,
+            default  => throw new SlotFlowInvalidArgumentException(
+                'TimeAxis::define() requires secondsInBucket for non-standard buckets.',
+                ['bucket' => $bucket],
+            ),
+        };
     }
 }

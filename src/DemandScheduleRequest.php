@@ -7,6 +7,7 @@ namespace Nandan108\SlotFlow;
 use Nandan108\SlotFlow\Contracts\DemandReleasePolicyInterface;
 use Nandan108\SlotFlow\Contracts\ShipmentCalendarInterface;
 use Nandan108\SlotFlow\Contracts\ShipmentPlannerInterface;
+use Nandan108\SlotFlow\Exceptions\SlotFlowInvalidArgumentException;
 use Nandan108\SlotFlow\Policies\PartialShipmentPolicy;
 
 /**
@@ -51,7 +52,7 @@ final class DemandScheduleRequest
         Flow | string $flow,
         Slot | string $target,
         array $statesBySubjectKey = [],
-        int | string $startTime = 0,
+        \DateTimeImmutable | int | string $startTime = 0,
         array $params = [],
         ?DemandReleasePolicyInterface $releasePolicy = null,
         ?ShipmentPlannerInterface $shipmentPlanner = null,
@@ -61,7 +62,18 @@ final class DemandScheduleRequest
         $this->flow = $flow;
         $this->target = $target;
         $this->statesBySubjectKey = $statesBySubjectKey;
-        $this->startTime = $space->timeAxis?->parse($startTime) ?? (is_int($startTime) ? $startTime : (int) $startTime);
+        if (null !== $space->timeAxis) {
+            $this->startTime = $space->timeAxis->parse($startTime);
+        } elseif (is_int($startTime)) {
+            $this->startTime = $startTime;
+        } elseif (is_string($startTime) && ctype_digit($startTime)) {
+            $this->startTime = (int) $startTime;
+        } else {
+            throw new SlotFlowInvalidArgumentException(
+                'Demand schedule requests without a TimeAxis require an integer bucket start time.',
+                ['start_time' => $startTime],
+            );
+        }
         $this->params = array_map('strval', $params);
         $this->releasePolicy = $releasePolicy ?? new PartialShipmentPolicy();
         $this->shipmentPlanner = $shipmentPlanner ?? new TimelineShipmentPlanner();

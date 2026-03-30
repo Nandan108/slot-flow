@@ -17,6 +17,9 @@ use Nandan108\SlotFlow\Time\TimedDurationResolverInterface;
 use Nandan108\SlotFlow\Time\TimedMovementEdge;
 use Nandan108\SlotFlow\Time\TimedQuantityState;
 use Nandan108\SlotFlow\Time\TimedSlotSpace;
+use Nandan108\SlotFlow\Time\WeeklyCalendar;
+use Nandan108\SlotFlow\Time\WeeklyCalendarMoment;
+use Nandan108\SlotFlow\Time\WeeklyDispatchCalendar;
 use PHPUnit\Framework\TestCase;
 
 final class TimeAwareTestCodec extends DefaultSlotKeyCodec
@@ -70,7 +73,7 @@ final class TimeLayerTest extends TestCase
     public function testTimeAxisRejectsInvalidBucketAndHumanKeyConfigurations(): void
     {
         try {
-            new TimeAxis('hour-1', 24);
+            new TimeAxis('hour-1', 3600, new \DateTimeImmutable('2026-01-01T00:00:00+00:00'), 24);
             self::fail('Expected invalid bucket rejection.');
         } catch (SlotFlowInvalidArgumentException $e) {
             self::assertStringContainsString('Time bucket name must contain letters only', $e->getMessage());
@@ -124,7 +127,7 @@ final class TimeLayerTest extends TestCase
 
     public function testSlotSpaceCanStoreTimeAxisAndPassItToTheCodec(): void
     {
-        $timeAxis = new TimeAxis('hour', 24, ['shift' => 8, 'day' => 24]);
+        $timeAxis = TimeAxis::define('hour', 24, ['shift' => 8, 'day' => 24]);
         $space = SlotSpace::defineTimed(
             dimensions: [
                 'loc' => ['sup', 'plant'],
@@ -151,6 +154,113 @@ final class TimeLayerTest extends TestCase
         self::assertSame(['d', 'h'], $axis->humanKeyParts);
         self::assertSame('9d16h', $axis->humanKey(232));
         self::assertSame('h0', $axis->humanKey(0));
+    }
+
+    public function testTimeAxisNormalizesTimeZeroAndConvertsBetweenBucketsAndDateTimes(): void
+    {
+        $axis = TimeAxis::define(
+            bucket: 'hour',
+            horizon: 48,
+            aliases: ['day' => 24],
+            timeZero: new \DateTimeImmutable('2026-03-30T14:23:10+00:00'),
+        );
+
+        self::assertSame('2026-03-30T14:00:00+00:00', $axis->timeZero->format(DATE_ATOM));
+        self::assertSame(0, $axis->parse(new \DateTimeImmutable('2026-03-30T14:59:59+00:00')));
+        self::assertSame(27, $axis->parse(new \DateTimeImmutable('2026-03-31T17:10:00+00:00')));
+        self::assertSame('2026-03-31T17:00:00+00:00', $axis->dateTime(27)->format(DATE_ATOM));
+        self::assertSame('2026-03-31T17:00:00+00:00', $axis->dateTime('1d3h')->format(DATE_ATOM));
+        self::assertSame('1d3h', $axis->humanKey(new \DateTimeImmutable('2026-03-31T17:59:59+00:00')));
+        self::assertTrue($axis->contains(new \DateTimeImmutable('2026-04-01T12:00:00+00:00')));
+        self::assertFalse($axis->contains(new \DateTimeImmutable('2026-03-30T13:59:59+00:00')));
+    }
+
+    public function testTimeAxisDefineUsesDeterministicEpochAnchorByDefault(): void
+    {
+        $axis = TimeAxis::define(
+            bucket: 'hour',
+            horizon: 48,
+            aliases: ['day' => 24],
+        );
+
+        self::assertSame('1970-01-01T00:00:00+00:00', $axis->timeZero->setTimezone(new \DateTimeZone('UTC'))->format(DATE_ATOM));
+        self::assertSame('1970-01-02T03:00:00+00:00', $axis->dateTime('1d3h')->setTimezone(new \DateTimeZone('UTC'))->format(DATE_ATOM));
+    }
+
+    public function testTimeAxisNormalizesNegativeAnchorsDownToPreviousBucketBoundary(): void
+    {
+        $axis = new TimeAxis(
+            bucket: 'hour',
+            secondsInBucket: 3600,
+            timeZero: new \DateTimeImmutable('1969-12-31T23:30:00+00:00'),
+            horizon: 24,
+        );
+
+        self::assertSame('1969-12-31T23:00:00+00:00', $axis->timeZero->format(DATE_ATOM));
+    }
+
+    public function testTimeAxisStartingNowNormalizesTheProvidedInstantToTheBucketBoundary(): void
+    {
+        $axis = TimeAxis::startingNow(
+            bucket: 'hour',
+            horizon: 24,
+            now: new \DateTimeImmutable('2026-03-30T14:23:10+00:00'),
+        );
+
+        self::assertSame('2026-03-30T14:00:00+00:00', $axis->timeZero->format(DATE_ATOM));
+    }
+
+    public function testWeeklyCalendarResolvesNextMatchingBucketAtOrAfterTheEarliestTime(): void
+    {
+        $axis = TimeAxis::define(
+            bucket: 'hour',
+            horizon: 24 * 14,
+            timeZero: new \DateTimeImmutable('2026-03-30T00:00:00+00:00'),
+        );
+        $calendar = new WeeklyCalendar([
+            WeeklyCalendarMoment::at('tue', '18:00'),
+            WeeklyCalendarMoment::at('fri', '09:00'),
+        ]);
+
+        self::assertSame(42, $calendar->nextTime($axis, 24));
+        self::assertSame(105, $calendar->nextTime($axis, 72));
+    }
+
+    public function testWeeklyCalendarUsesWallClockTimesAcrossDstTransitions(): void
+    {
+        $zurich = new \DateTimeZone('Europe/Zurich');
+        $axis = TimeAxis::define(
+            bucket: 'hour',
+            horizon: 24 * 14,
+            timeZero: new \DateTimeImmutable('2026-03-23T00:00:00', $zurich),
+        );
+        $calendar = new WeeklyCalendar([
+            WeeklyCalendarMoment::at('sun', '08:00'),
+        ]);
+
+        self::assertSame(
+            '2026-03-29T08:00:00+02:00',
+            $axis->dateTime($calendar->nextTime($axis, 0))->format(DATE_ATOM),
+        );
+    }
+
+    public function testWeeklyCalendarCanRejectNonexistentLocalTimes(): void
+    {
+        $zurich = new \DateTimeZone('Europe/Zurich');
+        $calendar = new WeeklyCalendar(
+            [WeeklyCalendarMoment::at('sun', '02:30')],
+            rejectInvalidLocalTimes: true,
+        );
+        $axis = TimeAxis::define(
+            bucket: 'minute',
+            horizon: 60 * 24 * 14,
+            timeZero: new \DateTimeImmutable('2026-03-23T00:00:00', $zurich),
+        );
+
+        $this->expectException(SlotFlowInvalidArgumentException::class);
+        $this->expectExceptionMessage('Weekly calendar local time does not exist in the configured timezone.');
+
+        $calendar->nextTime($axis, 0);
     }
 
     public function testTimedSlotSpaceResolvesTimedSlotsByTupleOrSerializedKey(): void
@@ -260,6 +370,38 @@ final class TimeLayerTest extends TestCase
         self::assertSame(48, $edges[1]->attributes['duration']);
         self::assertSame('movement', $edges[1]->attributes['timed-kind']);
         self::assertSame('truck', $edges[1]->attributes['lane']);
+    }
+
+    public function testTimedSlotSpaceCanUseAWeeklyDispatchCalendar(): void
+    {
+        $space = SlotSpace::defineTimed(
+            dimensions: [
+                'loc' => ['wh1', 'cust'],
+                'stt' => ['fs', 'sd'],
+            ],
+            timeAxis: TimeAxis::define(
+                bucket: 'hour',
+                horizon: 24 * 7,
+                aliases: ['day' => 24],
+                timeZero: new \DateTimeImmutable('2026-03-30T00:00:00+00:00'),
+            ),
+        )->edgeRules([
+            EdgeRule::allowLabeled('ship', 'wh1.fs', 'cust.sd', ['duration' => '1d']),
+        ])->setDispatchCalendar(
+            new WeeklyDispatchCalendar(new WeeklyCalendar([
+                WeeklyCalendarMoment::at('tue', '08:00'),
+                WeeklyCalendarMoment::at('thu', '08:00'),
+            ])),
+        );
+
+        $timed = TimedSlotSpace::fromBaseSpace($space);
+        $edges = $timed->getEdgesFrom($timed->slot('wh1.fs', 17));
+
+        self::assertSame('wh1.fs@h17', $edges[1]->from->key);
+        self::assertSame(32, $edges[1]->attributes['dispatch-time']);
+        self::assertSame(15, $edges[1]->attributes['wait-duration']);
+        self::assertSame('cust.sd@h56', $edges[1]->to->key);
+        self::assertSame('cust.sd@2d8h', $edges[1]->to->humanKey());
     }
 
     public function testTimedSlotSpaceSkipsEdgesThatArriveBeyondTheHorizon(): void

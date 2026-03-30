@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests;
 
+use Nandan108\SlotFlow\Calendars\WeeklyShipmentCalendar;
 use Nandan108\SlotFlow\Demand;
 use Nandan108\SlotFlow\DemandLine;
 use Nandan108\SlotFlow\DemandReleaseContext;
@@ -13,6 +14,7 @@ use Nandan108\SlotFlow\Exceptions\SlotFlowInvalidArgumentException;
 use Nandan108\SlotFlow\Flow;
 use Nandan108\SlotFlow\NamedPolicy;
 use Nandan108\SlotFlow\PlannerRules\ShipmentWaveCalendarRule;
+use Nandan108\SlotFlow\PlannerRules\WeeklyShipmentCalendarRule;
 use Nandan108\SlotFlow\Policies\FullShipmentPolicy;
 use Nandan108\SlotFlow\Policies\PartialShipmentPolicy;
 use Nandan108\SlotFlow\Policies\PriorityReleasePolicy;
@@ -21,6 +23,8 @@ use Nandan108\SlotFlow\QuantityState;
 use Nandan108\SlotFlow\Rules\EdgeRule;
 use Nandan108\SlotFlow\SlotSpace;
 use Nandan108\SlotFlow\Time\TimeAxis;
+use Nandan108\SlotFlow\Time\WeeklyCalendar;
+use Nandan108\SlotFlow\Time\WeeklyCalendarMoment;
 use PHPUnit\Framework\TestCase;
 
 final class DemandSchedulerTest extends TestCase
@@ -150,6 +154,45 @@ final class DemandSchedulerTest extends TestCase
         self::assertSame(['sku2' => 2], $this->shipmentMap($schedule->shipments[2]->lines));
     }
 
+    public function testShipmentPlannerCanApplyAWeeklyOrderLevelShipmentCalendar(): void
+    {
+        $space = SlotSpace::defineTimed(
+            dimensions: [
+                'loc' => ['wh1', 'sup1', 'cust'],
+                'stt' => ['fs', 'sd'],
+            ],
+            timeAxis: TimeAxis::define(
+                'hour',
+                24 * 14,
+                ['day' => 24],
+                timeZero: new \DateTimeImmutable('2026-03-30T00:00:00+00:00'),
+            ),
+        )->edgeRules([
+            EdgeRule::allowLabeled('ship', 'wh1.fs', 'cust.sd', ['duration' => '1d']),
+            EdgeRule::allowLabeled('ship', 'sup1.fs', 'cust.sd', ['duration' => '3d']),
+        ])->flow(
+            'promise',
+            static fn (Flow $flow) => $flow->stepByLabeledEdges('ship'),
+        );
+
+        $schedule = (new DemandScheduler())->schedule(new DemandScheduleRequest(
+            demand: new Demand([new DemandLine('sku', 2)]),
+            space: $space,
+            flow: 'promise',
+            target: 'cust.sd',
+            statesBySubjectKey: [
+                'sku' => new QuantityState($space, [['wh1.fs', 1], ['sup1.fs', 1]]),
+            ],
+            releasePolicy: new PartialShipmentPolicy(),
+            shipmentCalendar: new WeeklyShipmentCalendar(new WeeklyCalendar([
+                WeeklyCalendarMoment::at('tue', '18:00'),
+                WeeklyCalendarMoment::at('fri', '09:00'),
+            ])),
+        ));
+
+        self::assertSame([42, 105], array_map(static fn ($shipment): int => $shipment->releaseTime, $schedule->shipments));
+    }
+
     public function testShipmentPlannerCanApplyEdgeAttachedShipmentCalendarRules(): void
     {
         $space = $this->makePromiseSpaceWithShipmentWaves();
@@ -182,7 +225,7 @@ final class DemandSchedulerTest extends TestCase
                 'loc' => ['wh1', 'sup1', 'cust'],
                 'stt' => ['fs', 'sd'],
             ],
-            timeAxis: new TimeAxis('hour', 24 * 10, ['day' => 24]),
+            timeAxis: TimeAxis::define('hour', 24 * 10, ['day' => 24]),
         )->edgeRules([
             EdgeRule::allowLabeled('ship', 'wh1.fs', 'cust.sd', ['duration' => '1d']),
             EdgeRule::allowLabeled('ship', 'sup1.fs', 'cust.sd', ['duration' => '3d']),
@@ -208,6 +251,47 @@ final class DemandSchedulerTest extends TestCase
         self::assertCount(1, $schedule->lines[0]->readyArrivalSteps(24)[0]->shipmentCalendarRules());
     }
 
+    public function testShipmentPlannerCanApplyWeeklyStepLevelShipmentCalendarRules(): void
+    {
+        $space = SlotSpace::defineTimed(
+            dimensions: [
+                'loc' => ['wh1', 'sup1', 'cust'],
+                'stt' => ['fs', 'sd'],
+            ],
+            timeAxis: TimeAxis::define(
+                'hour',
+                24 * 14,
+                ['day' => 24],
+                timeZero: new \DateTimeImmutable('2026-03-30T00:00:00+00:00'),
+            ),
+        )->edgeRules([
+            EdgeRule::allowLabeled('ship', 'wh1.fs', 'cust.sd', ['duration' => '1d']),
+            EdgeRule::allowLabeled('ship', 'sup1.fs', 'cust.sd', ['duration' => '3d']),
+        ])->flow(
+            'promise',
+            static fn (Flow $flow) => $flow
+                ->stepByLabeledEdges('ship')
+                ->policies(new WeeklyShipmentCalendarRule(new WeeklyCalendar([
+                    WeeklyCalendarMoment::at('tue', '18:00'),
+                    WeeklyCalendarMoment::at('fri', '09:00'),
+                ]))),
+        );
+
+        $schedule = (new DemandScheduler())->schedule(new DemandScheduleRequest(
+            demand: new Demand([new DemandLine('sku', 2)]),
+            space: $space,
+            flow: 'promise',
+            target: 'cust.sd',
+            statesBySubjectKey: [
+                'sku' => new QuantityState($space, [['wh1.fs', 1], ['sup1.fs', 1]]),
+            ],
+            releasePolicy: new PartialShipmentPolicy(),
+        ));
+
+        self::assertSame([42, 105], array_map(static fn ($shipment): int => $shipment->releaseTime, $schedule->shipments));
+        self::assertCount(1, $schedule->lines[0]->readyArrivalSteps(24)[0]->shipmentCalendarRules());
+    }
+
     public function testShipmentPlannerOnlyAppliesShipmentCalendarRulesToTheArrivalReleasedInThatShipment(): void
     {
         $space = SlotSpace::defineTimed(
@@ -215,7 +299,7 @@ final class DemandSchedulerTest extends TestCase
                 'loc' => ['wh1', 'sup1', 'cust'],
                 'stt' => ['fs', 'sd'],
             ],
-            timeAxis: new TimeAxis('hour', 24 * 10, ['day' => 24]),
+            timeAxis: TimeAxis::define('hour', 24 * 10, ['day' => 24]),
         )->edgeRules([
             EdgeRule::allowLabeled('ship', 'wh1.fs', 'cust.sd', ['duration' => '1d'])
                 ->policies(new ShipmentWaveCalendarRule(48)),
@@ -247,7 +331,7 @@ final class DemandSchedulerTest extends TestCase
                 'loc' => ['wh1', 'cust'],
                 'stt' => ['fs', 'sd'],
             ],
-            timeAxis: new TimeAxis('hour', 24 * 10, ['day' => 24]),
+            timeAxis: TimeAxis::define('hour', 24 * 10, ['day' => 24]),
         )->edgeRules([
             EdgeRule::allowLabeled('ship', 'wh1.fs', 'cust.sd', ['duration' => '1d'])
                 ->policies(NamedPolicy::as('wave', new ShipmentWaveCalendarRule(24))),
@@ -342,7 +426,7 @@ final class DemandSchedulerTest extends TestCase
                     'loc' => ['sup1', 'sup2', 'sup3', 'wh1', 'wh2', 'cust'],
                     'stt' => ['fs', 'sd'],
                 ],
-                timeAxis: new TimeAxis('hour', 24 * 10, ['day' => 24]),
+                timeAxis: TimeAxis::define('hour', 24 * 10, ['day' => 24]),
             )
             // allow movement from suppliers and warehouses to the customer
             ->edgeRules([EdgeRule::allowLabeled('ship', 'wh*|sup*.fs', 'cust.sd')])
@@ -369,7 +453,7 @@ final class DemandSchedulerTest extends TestCase
                     'loc' => ['sup1', 'sup2', 'sup3', 'wh1', 'wh2', 'cust'],
                     'stt' => ['fs', 'sd'],
                 ],
-                timeAxis: new TimeAxis('hour', 24 * 10, ['day' => 24]),
+                timeAxis: TimeAxis::define('hour', 24 * 10, ['day' => 24]),
             )->edgeRules([
                 EdgeRule::allowLabeled('ship', 'wh*|sup*.fs', 'cust.sd'),
                 EdgeRule::allowLabeled('ship', 'wh1.fs', 'cust.sd')->policies($WhipWave48h),

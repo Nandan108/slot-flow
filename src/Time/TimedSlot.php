@@ -54,7 +54,7 @@ final class TimedSlot
     /**
      * Return the same base slot positioned at another point on the same time axis.
      */
-    public function at(int | string $time): self
+    public function at(\DateTimeImmutable | int | string $time): self
     {
         return $this->space->slot($this->slot, $time);
     }
