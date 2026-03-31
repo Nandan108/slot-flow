@@ -19,6 +19,7 @@ use Nandan108\SlotFlow\Time\TimedQuantityState;
 use Nandan108\SlotFlow\Time\TimedSlotSpace;
 use Nandan108\SlotFlow\Time\WeeklyCalendar;
 use Nandan108\SlotFlow\Time\WeeklyCalendarMoment;
+use Nandan108\SlotFlow\Time\WeeklyCalendarWindow;
 use Nandan108\SlotFlow\Time\WeeklyDispatchCalendar;
 use PHPUnit\Framework\TestCase;
 
@@ -199,6 +200,18 @@ final class TimeLayerTest extends TestCase
         self::assertSame('1969-12-31T23:00:00+00:00', $axis->timeZero->format(DATE_ATOM));
     }
 
+    public function testTimeAxisConstructorAcceptsStringTimeZero(): void
+    {
+        $axis = new TimeAxis(
+            bucket: 'hour',
+            secondsInBucket: 3600,
+            timeZero: '2026-03-30T14:23:10+00:00',
+            horizon: 24,
+        );
+
+        self::assertSame('2026-03-30T14:00:00+00:00', $axis->timeZero->format(DATE_ATOM));
+    }
+
     public function testTimeAxisStartingNowNormalizesTheProvidedInstantToTheBucketBoundary(): void
     {
         $axis = TimeAxis::startingNow(
@@ -242,6 +255,60 @@ final class TimeLayerTest extends TestCase
             '2026-03-29T08:00:00+02:00',
             $axis->dateTime($calendar->nextTime($axis, 0))->format(DATE_ATOM),
         );
+    }
+
+    public function testWeeklyCalendarFromMapCanExpandGroupedAndNumericDaySelectors(): void
+    {
+        $fromMap = WeeklyCalendar::fromMap([
+            'mon-thu,fri' => ['10:00', '13:00-16:00'],
+            '6,7'         => ['09:00'],
+        ]);
+
+        self::assertCount(7, $fromMap->moments);
+        self::assertCount(5, $fromMap->windows);
+        self::assertInstanceOf(WeeklyCalendarWindow::class, $fromMap->windows[0]);
+        self::assertSame([1, 2, 3, 4, 5, 6, 7], array_map(static fn (WeeklyCalendarMoment $moment): int => $moment->isoWeekday, $fromMap->moments));
+    }
+
+    public function testWeeklyCalendarWindowsReleaseImmediatelyWhenAlreadyInsideTheWindow(): void
+    {
+        $axis = TimeAxis::define(
+            bucket: 'hour',
+            horizon: 24 * 7,
+            timeZero: new \DateTimeImmutable('2026-03-30T00:00:00+00:00'),
+        );
+        $calendar = WeeklyCalendar::fromMap([
+            'mon' => ['10:00-13:00'],
+        ]);
+
+        self::assertSame(11, $calendar->nextTime($axis, 11));
+        self::assertSame(10, $calendar->nextTime($axis, 9));
+    }
+
+    public function testWeeklyCalendarCanMergeAndDeduplicateEntries(): void
+    {
+        $merged = WeeklyCalendar::merge(
+            WeeklyCalendar::fromMap([
+                'mon' => ['10:00', '13:00-16:00'],
+            ]),
+            WeeklyCalendar::fromMap(
+                ['mon,fri' => ['10:00', '13:00-16:00']],
+                rejectInvalidLocalTimes: true,
+            ),
+        );
+
+        self::assertCount(2, $merged->moments);
+        self::assertCount(2, $merged->windows);
+        self::assertTrue($merged->rejectInvalidLocalTimes);
+    }
+
+    public function testWeeklyCalendarFromMapCanHandleWraparoundRanges(): void
+    {
+        $calendar = WeeklyCalendar::fromMap([
+            'fri-mon' => ['10:00'],
+        ]);
+
+        self::assertSame([1, 5, 6, 7], array_map(static fn (WeeklyCalendarMoment $moment): int => $moment->isoWeekday, $calendar->moments));
     }
 
     public function testWeeklyCalendarCanRejectNonexistentLocalTimes(): void

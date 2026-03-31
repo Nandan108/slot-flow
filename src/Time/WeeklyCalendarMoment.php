@@ -45,8 +45,6 @@ final class WeeklyCalendarMoment
 
     /**
      * Build one weekly calendar moment from a weekday name/number and `HH:MM[:SS]` time string.
-     *
-     * @param int|'mon'|'monday'|'tue'|'tues'|'tuesday'|'wed'|'wednesday'|'thu'|'thur'|'thurs'|'thursday'|'fri'|'friday'|'sat'|'saturday'|'sun'|'sunday' $weekday
      */
     public static function at(int | string $weekday, string $time): self
     {
@@ -61,6 +59,14 @@ final class WeeklyCalendarMoment
     }
 
     /**
+     * Normalize a weekday name or number to ISO weekday form.
+     */
+    public static function weekday(int | string $weekday): int
+    {
+        return self::normalizeWeekday($weekday);
+    }
+
+    /**
      * Resolve this weekly moment into one concrete datetime inside the week that starts at the given Monday midnight.
      */
     public function dateTime(\DateTimeImmutable $weekStart): \DateTimeImmutable
@@ -70,6 +76,32 @@ final class WeeklyCalendarMoment
         return $weekStart
             ->modify("+{$days} days")
             ->setTime($this->hour, $this->minute, $this->second);
+    }
+
+    /**
+     * Return the canonical local wall-clock string for this moment.
+     */
+    public function clockTime(): string
+    {
+        return sprintf('%02d:%02d:%02d', $this->hour, $this->minute, $this->second);
+    }
+
+    /**
+     * Return a canonical key suitable for deduplication and merges.
+     */
+    public function signature(): string
+    {
+        return sprintf('moment:%d:%s', $this->isoWeekday, $this->clockTime());
+    }
+
+    /**
+     * Compare this moment to another moment using canonical weekday/time ordering.
+     */
+    public function compareTo(self $other): int
+    {
+        return [$this->isoWeekday, $this->hour, $this->minute, $this->second]
+            <=>
+            [$other->isoWeekday, $other->hour, $other->minute, $other->second];
     }
 
     private static function normalizeWeekday(int | string $weekday): int

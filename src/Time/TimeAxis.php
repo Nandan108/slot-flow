@@ -42,7 +42,7 @@ final class TimeAxis
      *
      * @param string                       $bucket          canonical name of the base time unit, such as "hour". First letter is used as the default shorthand, such as "h".
      * @param int                          $secondsInBucket size of one bucket in seconds
-     * @param \DateTimeImmutable           $timeZero        anchor instant for bucket index 0; normalized down to the nearest bucket boundary
+     * @param \DateTimeImmutable|string    $timeZero        anchor instant for bucket index 0; strings are parsed via DateTimeImmutable and normalized down to the nearest bucket boundary
      * @param int                          $horizon         maximum time index allowed on this axis (inclusive)
      * @param array<non-empty-string, int> $aliases         map of human-friendly alias => bucket multiplier. Value may be suffixed with a shorthand letter, such as `day: d` to specify the alias shorthand explicitly (otherwise derived from first letter of alias).
      * @param list<non-empty-string>|null  $humanKeyParts   ordered human-key shorthands such as ['d', 'h']
@@ -50,7 +50,7 @@ final class TimeAxis
     public function __construct(
         string $bucket,
         int $secondsInBucket,
-        \DateTimeImmutable $timeZero,
+        \DateTimeImmutable | string $timeZero,
         public readonly int $horizon,
         array $aliases = [],
         ?array $humanKeyParts = null,
@@ -87,7 +87,7 @@ final class TimeAxis
 
         [$this->bucket, $this->bucketShorthand] = $parseUnit('Time bucket', $bucket);
         $this->secondsInBucket = $secondsInBucket;
-        $this->timeZero = $this->normalizeTimeZero($timeZero);
+        $this->timeZero = $this->normalizeTimeZero($this->resolveTimeZero($timeZero));
 
         /** @var array<non-empty-string, int> $normalizedAliases */
         $normalizedAliases = [];
@@ -140,7 +140,7 @@ final class TimeAxis
         int $horizon,
         array $aliases = [],
         ?array $humanKeyParts = null,
-        ?\DateTimeImmutable $timeZero = null,
+        \DateTimeImmutable | string | null $timeZero = null,
         ?int $secondsInBucket = null,
     ): self {
         return new self(
@@ -167,7 +167,7 @@ final class TimeAxis
         int $horizon,
         array $aliases = [],
         ?array $humanKeyParts = null,
-        ?\DateTimeImmutable $now = null,
+        \DateTimeImmutable | string | null $now = null,
         ?int $secondsInBucket = null,
     ): self {
         return new self(
@@ -406,6 +406,23 @@ final class TimeAxis
         }
 
         return $normalized;
+    }
+
+    private function resolveTimeZero(\DateTimeImmutable | string $timeZero): \DateTimeImmutable
+    {
+        if ($timeZero instanceof \DateTimeImmutable) {
+            return $timeZero;
+        }
+
+        try {
+            return new \DateTimeImmutable($timeZero);
+        } catch (\Exception $e) {
+            throw new SlotFlowInvalidArgumentException(
+                'Time axis zero point must be a valid datetime string or DateTimeImmutable.',
+                ['time_zero' => $timeZero, 'error' => $e->getMessage()],
+                previous: $e,
+            );
+        }
     }
 
     private function normalizeTimeZero(\DateTimeImmutable $timeZero): \DateTimeImmutable
