@@ -16,6 +16,8 @@ use Nandan108\SlotFlow\Results\TimedQuantityStateDelta;
 final class MovementSchedule
 {
     /**
+     * Create one timed movement schedule result.
+     *
      * @param list<ScheduledStep>     $steps
      * @param list<ScheduleMilestone> $milestones
      */

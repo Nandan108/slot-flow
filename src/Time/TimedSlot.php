@@ -36,6 +36,8 @@ final class TimedSlot
     }
 
     /**
+     * Return one base-slot dimension value from this timed slot.
+     *
      * @param non-empty-string $name
      */
     public function dimension(string $name): ?string

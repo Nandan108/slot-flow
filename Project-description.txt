@@ -1,0 +1,93 @@
+Ok, this project is to discuss subjects around the creation and evolution of the SlotFlow package.
+
+The file `original-MPB-InventoryEngine.php` contains the original inventory flow code I wrote back in 2017 and evolved in the following years, with an engineering mindset less developed that it is now...
+I left MPB on 2023-08-31, and the company seems to have gone bankrupt since the beginning of 2026, but the experience remains with me.
+
+Now, I'd like to leverage it as an open source project, SlotFlow, a library that
+- is a generic constrained flow engine over a multidimensional state space
+- is a slot-based flow engine, a workflow engine for quantities
+- allows constrained flow routing and domain workflows on a state graph over a cartesian product domain
+
+Discrete state space
+Multidimensional state space
+Product state space
+Finite state space graph
+
+Concepts:
+- Slots (state space nodes)
+- Edges (state transitions)
+- Quantity (flow)
+- Constraints (limits)
+- Paths (routing)
+- Execution engine
+
+The file SlotFlow.php contains the current state of the re-implementation effort.
+
+I'd like SlotFlow to support at least three domains, preferably more:
+- ecommerce inventory
+- supply chain routing or simulation
+- manufacturing pipeline
+- logistics optimization
+- traffic flow optimization
+
+I want to make SlotFlow as full-featured as possible while keeping it generic, and have it well documented with various domain examples.
+
+You told me: "Instead of selling SlotFlow as `inventory engine`, sell it as `flow-based inventory modeling`"
+And to talk about its systematic design and rare properties, which would be attractive to engineers:
+- state-space modeling
+- deterministic movement planning
+- overflow routing
+- allocation traceability
+
+But for now I will focuse on e-commerce applications.
+Once SlotFlow is ready, I might create one ore more plugins for Shopify or WooCommerce, to solve:
+- multi warehouse allocation
+- backorders
+- consignment sales and dropshipping
+- inbound stock promise dates
+- overselling prevention
+    - app-side cart keep track of cart-reserved qantities and cart expiry
+    - right before payment gateway engagement, qtties captured with state change: `fs -> res`
+    - on sale/booking concluded: `res -> sd`
+- dropshipping fallback
+- partial shipment support
+- ledger keeping / audit trail / reconcilation
+- event sourced
+
+I'm considering an eCommerce specific adapter for inventory-flow-core, which would encode business logic/flows to address all common inventory-related eCommerce pains (and if there are that it can't address, we should think about it).
+
+Cool, ok. Let's make a list of features this inventory-flow-core should support. I'm going to simplify SlotFlow's CommerceFlowExample, keeping the PO reception example (because I need a way to demonstrate the power of flow+fallback), but the inventory-flow-core should address all common inventory-related eCommerce pains (and if there are that it can't address, we should think about it).
+
+- multi warehouse allocation
+- backorders or dropshipping fallback
+- consignment sales
+    - prioritize owned stock allocation strategy
+    - handle ordered -> inbound -> in-stock
+- inbound inventory promise dates
+- oversell-proof reservations / race-condition safety
+    - app-side cart keep track of cart-reserved qantities and cart expiry
+    - right before payment gateway engagement, qtty captured with state change: `fs -> res`
+    - on sale/booking concluded: `res -> sd`
+- partial and joint shipment support
+    - max number of split shipments
+    - grouping by warehouse
+    - multi-order joint shipments
+- ledger keeping with meta / audit trail / reconcilation
+- channels dimension (web, marketplace, retail, wholesale)
+- safety stock / buffer stock
+- pluggable allocation strategies
+    - nearest warehouse, cheapest shipping, fastest delivery, minimize splits
+- returns handling - state: ret|def|qrt (quarantine)
+- cancellation flow
+    - disallow after dispatch
+    - handle consignment edge case: allow after sale end?
+
+The inventory-flow-core should provide
+- ready-to-use topology
+- ready-to-use cascades
+- ready-to-use policies
+- all opt-in and configurable
+- domain vocabulary
+
+Then for the conception... I guess it should be largely event-driven, and thought must be given to best support
+scalable concrete adapters.

@@ -28,6 +28,9 @@ final class FlowStepBuilder
     private Flow $flow;
     private FlowStep $step;
 
+    /**
+     * Create one fluent builder for the current flow step.
+     */
     public function __construct(Flow $flow, FlowStep $step)
     {
         $this->flow = $flow;
@@ -129,7 +132,7 @@ final class FlowStepBuilder
     }
 
     /**
-     * Add a step that resolves its candidate edges from one or more labeled edge rules.
+     * Start the next step by resolving candidate edges from labeled edge rules.
      *
      * @param non-empty-string ...$edgeLabels
      */

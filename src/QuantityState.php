@@ -27,6 +27,8 @@ class QuantityState
     private array $slotAttributes = [];
 
     /**
+     * Create one quantity state from slot-quantity tuples.
+     *
      * @param array<array{Slot, int|float}> $tuples
      *
      * @psalm-param list<TInventoryTuple> $tuples
@@ -111,6 +113,9 @@ class QuantityState
         $this->quantities[$slot->key] = $quantity;
     }
 
+    /**
+     * Add a signed quantity delta to one slot.
+     */
     public function add(Slot $slot, int | float $delta): void
     {
         $key = $slot->key;
@@ -172,6 +177,9 @@ class QuantityState
         return $clone;
     }
 
+    /**
+     * Return the slot space this quantity state belongs to.
+     */
     public function space(): SlotSpace
     {
         return $this->space;

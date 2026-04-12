@@ -11,7 +11,11 @@ namespace Nandan108\SlotFlow\Exceptions;
  */
 class SlotFlowInvalidArgumentException extends \InvalidArgumentException implements SlotFlowExceptionInterface
 {
-    /** @param array<string, mixed> $debugContext */
+    /**
+     * Create one SlotFlow invalid-argument exception with optional structured debug context.
+     *
+     * @param array<string, mixed> $debugContext
+     */
     public function __construct(
         string $message = '',
         private readonly array $debugContext = [],

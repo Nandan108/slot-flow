@@ -18,6 +18,8 @@ final class BatchItem
     private ?MovementResult $result = null;
 
     /**
+     * Create one batch item for one subject quantity state.
+     *
      * @param T             $subject
      * @param QuantityState $inventory the initial quantity state for this batch item
      */
@@ -28,11 +30,17 @@ final class BatchItem
     ) {
     }
 
+    /**
+     * Return the movement result assigned to this batch item, if any.
+     */
     public function movementResult(): ?MovementResult
     {
         return $this->result;
     }
 
+    /**
+     * Assign the movement result for this batch item exactly once.
+     */
     public function setMovementResult(MovementResult $result): void
     {
         if (null !== $this->result) {

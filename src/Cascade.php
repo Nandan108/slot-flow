@@ -13,4 +13,13 @@ namespace Nandan108\SlotFlow;
  */
 class Cascade extends Flow
 {
+    /**
+     * Copy one flow into a backward-compatible cascade instance.
+     */
+    #[\Override]
+    public static function fromFlow(Flow $flow): static
+    {
+        /** @var static */
+        return parent::fromFlow($flow);
+    }
 }

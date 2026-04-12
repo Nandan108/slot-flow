@@ -15,6 +15,9 @@ use Nandan108\SlotFlow\SlotSpace;
  */
 final class BatchMovementEngine
 {
+    /**
+     * Create one batch movement engine around a single-item engine.
+     */
     public function __construct(
         private MovementEngine $engine,
     ) {

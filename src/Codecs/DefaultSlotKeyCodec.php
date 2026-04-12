@@ -22,13 +22,16 @@ use Nandan108\SlotFlow\Time\TimeAxis;
  */
 class DefaultSlotKeyCodec implements SlotCodec
 {
-    public const string SEPARATOR = '.';
-    public const string WILDCARD = '*';
-    public const string ALTERNATIVE = '|';
+    public const SEPARATOR = '.';
+    public const WILDCARD = '*';
+    public const ALTERNATIVE = '|';
 
     /** Represents source or sink */
-    public const string NIL_KEY = 'nil';
+    public const NIL_KEY = 'nil';
 
+    /**
+     * Create the default dot-separated slot codec for one slot space.
+     */
     public function __construct(
         private SlotSpace $space,
         public readonly ?TimeAxis $timeAxis = null,
@@ -70,7 +73,7 @@ class DefaultSlotKeyCodec implements SlotCodec
     }
 
     /**
-     * @param list<?string>|array<non-empty-string, ?string>|null $values
+     * @param list<string|null>|array<non-empty-string, ?string>|null $values
      *
      * @psalm-param null|TSlotTuplePattern|TSlotArrayPattern $values
      *

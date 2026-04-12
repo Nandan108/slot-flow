@@ -19,6 +19,8 @@ use Nandan108\SlotFlow\SlotSpace;
 final class EdgeRule
 {
     /**
+     * Create one declarative edge allow/deny rule.
+     *
      * @param array<int|string, ?string>|string|null $from
      * @param array<int|string, ?string>|string|null $to
      *
@@ -37,6 +39,8 @@ final class EdgeRule
     }
 
     /**
+     * Create one labeled allow rule.
+     *
      * @param array<int|string, ?string>|string|null $from
      * @param array<int|string, ?string>|string|null $to
      *
@@ -49,6 +53,8 @@ final class EdgeRule
     }
 
     /**
+     * Create one unlabeled allow rule.
+     *
      * @param array<int|string, ?string>|string|null $from
      * @param array<int|string, ?string>|string|null $to
      *
@@ -61,6 +67,8 @@ final class EdgeRule
     }
 
     /**
+     * Create one deny rule.
+     *
      * @param array<int|string, ?string>|string|null $from
      * @param array<int|string, ?string>|string|null $to
      *
@@ -72,6 +80,9 @@ final class EdgeRule
         return new self(false, $from, $to, $label, $meta);
     }
 
+    /**
+     * Return a copy of the rule with merged metadata attributes.
+     */
     public function meta(array $attributes): self
     {
         return new self($this->allow, $this->from, $this->to, $this->label, $attributes + $this->attributes);

@@ -214,19 +214,13 @@ final class PolicyBuckets
 
         foreach ($order as $item) {
             if ('policy' === $item['type']) {
-                if (!array_key_exists('policy', $item)) {
-                    continue;
+                if (array_key_exists('policy', $item)) {
+                    $resolved[] = $item['policy'];
                 }
-
-                $resolved[] = $item['policy'];
-                continue;
+            } elseif (array_key_exists('name', $item)) {
+                $resolved[] = $named[$item['name']];
             }
 
-            if (!array_key_exists('name', $item)) {
-                continue;
-            }
-
-            $resolved[] = $named[$item['name']];
         }
 
         return $resolved;

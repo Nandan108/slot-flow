@@ -6,6 +6,7 @@ namespace Tests;
 
 use Nandan108\SlotFlow\Batch\InventoryBatch;
 use Nandan108\SlotFlow\Cascade;
+use Nandan108\SlotFlow\Flow;
 use Nandan108\SlotFlow\Inventory;
 use Nandan108\SlotFlow\MovementEngine;
 use Nandan108\SlotFlow\Policies\AvailableInventorySortPolicy;
@@ -73,6 +74,37 @@ final class LegacyApiCompatibilityTest extends TestCase
         } catch (\InvalidArgumentException $e) {
             self::assertSame("Cascade 'missing' not defined", $e->getMessage());
         }
+    }
+
+    public function testLegacyCascadeArrayRegistrationStillCreatesACascade(): void
+    {
+        $space = SlotSpace::define([
+            'loc' => ['foo', 'bar'],
+            'stt' => ['fs', 'sd'],
+        ])->cascade('book', [[['stt' => 'fs'], ['stt' => 'sd']]]);
+
+        self::assertInstanceOf(Flow::class, $space->getFlow('book'));
+        self::assertInstanceOf(Cascade::class, $space->getCascade('book'));
+        self::assertSame(['stt' => 'fs'], $space->getFlow('book')->steps()[0]->from);
+        self::assertSame(['stt' => 'sd'], $space->getFlow('book')->steps()[0]->to);
+    }
+
+    public function testLegacyCascadeLookupCanWrapAFlowAsACascade(): void
+    {
+        $space = SlotSpace::define([
+            'loc' => ['foo', 'bar'],
+            'stt' => ['fs', 'sd'],
+        ])->flow(
+            'book',
+            static fn (Flow $flow) => $flow->move('foo.fs', 'bar.sd'),
+        );
+
+        $cascade = $space->getCascade('book');
+
+        self::assertInstanceOf(Cascade::class, $cascade);
+        self::assertSame('book', $cascade->name());
+        self::assertSame('foo.fs', $cascade->steps()[0]->from);
+        self::assertSame('bar.sd', $cascade->steps()[0]->to);
     }
 
     public function testLegacyCascadeContextAliasStillWorks(): void

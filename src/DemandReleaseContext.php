@@ -15,6 +15,8 @@ use Nandan108\SlotFlow\Results\DemandShipment;
 final class DemandReleaseContext
 {
     /**
+     * Create one order-level release-evaluation context.
+     *
      * @param list<DemandLineSchedule> $lineSchedules
      * @param array<string, int|float> $availableBySubject
      * @param array<string, int|float> $shippedBySubject

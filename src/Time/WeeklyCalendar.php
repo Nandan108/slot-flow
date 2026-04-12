@@ -19,6 +19,8 @@ final class WeeklyCalendar
     public readonly array $windows;
 
     /**
+     * Create one weekly calendar from moments and windows.
+     *
      * @param list<WeeklyCalendarMoment|WeeklyCalendarWindow> $entries
      */
     public function __construct(
@@ -114,10 +116,10 @@ final class WeeklyCalendar
     public function nextTime(TimeAxis $axis, int $earliestTime): int
     {
         $earliestDateTime = $axis->dateTime($earliestTime);
+        $latestDateTime = $axis->dateTime($axis->horizon);
         $weekStart = $this->startOfIsoWeek($earliestDateTime);
 
-        for ($weekOffset = 0; $weekOffset < 3; ++$weekOffset) {
-            $candidateWeek = $weekStart->modify("+{$weekOffset} week");
+        for ($candidateWeek = $weekStart; $candidateWeek <= $latestDateTime; $candidateWeek = $candidateWeek->modify('+1 week')) {
             $bestCandidate = null;
 
             foreach ($this->moments as $moment) {
@@ -147,7 +149,13 @@ final class WeeklyCalendar
             }
 
             if ($bestCandidate instanceof \DateTimeImmutable) {
-                return $axis->ceil($bestCandidate);
+                $resolvedTime = $axis->ceil($bestCandidate);
+
+                if ($axis->contains($resolvedTime)) {
+                    return $resolvedTime;
+                }
+
+                break;
             }
         }
 
@@ -198,12 +206,13 @@ final class WeeklyCalendar
     {
         if (str_contains($expression, '-')) {
             $parts = explode('-', $expression, 2);
-            if (2 !== count($parts)) {
-                throw new SlotFlowInvalidArgumentException(
-                    'Weekly calendar windows must use start-end syntax.',
-                    ['expression' => $expression],
-                );
-            }
+
+            2 === count($parts) || throw new SlotFlowInvalidArgumentException(
+                'Weekly calendar windows must use start-end syntax.',
+                ['expression' => $expression],
+            );
+            /** @psalm-suppress UnnecessaryVarAnnotation */
+            /** @var array{string, string} $parts */
             [$start, $end] = $parts;
             $isoWeekday = WeeklyCalendarMoment::weekday($weekday);
 
@@ -235,13 +244,12 @@ final class WeeklyCalendar
 
             if (str_contains($segment, '-')) {
                 $parts = explode('-', $segment, 2);
-                if (2 !== count($parts)) {
-                    throw new SlotFlowInvalidArgumentException(
-                        'Weekly calendar day ranges must use start-end syntax.',
-                        ['selector' => $selector, 'segment' => $segment],
-                    );
-                }
-
+                2 === count($parts) || throw new SlotFlowInvalidArgumentException(
+                    'Weekly calendar day ranges must use start-end syntax.',
+                    ['selector' => $selector, 'segment' => $segment],
+                );
+                /** @psalm-suppress UnnecessaryVarAnnotation */
+                /** @var array{string, string} $parts */
                 [$start, $end] = $parts;
                 $startIndex = self::normalizeDayToken(trim($start));
                 $endIndex = self::normalizeDayToken(trim($end));
@@ -265,28 +273,19 @@ final class WeeklyCalendar
     {
         $token = strtolower(trim($token));
 
-        if (ctype_digit($token)) {
-            $isoWeekday = (int) $token;
-            if ($isoWeekday < 1 || $isoWeekday > 7) {
-                throw new SlotFlowInvalidArgumentException(
-                    'Weekly calendar numeric weekdays must be ISO values from 1 (Monday) to 7 (Sunday).',
-                    ['weekday' => $token],
-                );
-            }
+        /** @var array<string, int> $cache */
+        static $cache = [];
 
-            return $isoWeekday - 1;
-        }
-
-        return match ($token) {
-            'mon', 'monday' => 0,
-            'tue', 'tues', 'tuesday' => 1,
-            'wed', 'wednesday' => 2,
-            'thu', 'thur', 'thurs', 'thursday' => 3,
-            'fri', 'friday' => 4,
-            'sat', 'saturday' => 5,
-            'sun', 'sunday' => 6,
-            default => throw new SlotFlowInvalidArgumentException(
-                'Weekly calendar day selectors must use weekday names or ISO weekday numbers.',
+        return $cache[$token] ??= match ($token) {
+            '1', 'mon', 'monday'                    => 0,
+            '2', 'tue', 'tues', 'tuesday'           => 1,
+            '3', 'wed', 'wednesday'                 => 2,
+            '4', 'thu', 'thur', 'thurs', 'thursday' => 3,
+            '5', 'fri', 'friday'                    => 4,
+            '6', 'sat', 'saturday'                  => 5,
+            '7', 'sun', 'sunday'                    => 6,
+            default                                 => throw new SlotFlowInvalidArgumentException(
+                'Weekly calendar day selectors must use weekday names or ISO weekday numbers (1-7).',
                 ['weekday' => $token],
             ),
         };

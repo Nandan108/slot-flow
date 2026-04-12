@@ -11,7 +11,11 @@ namespace Nandan108\SlotFlow\Exceptions;
  */
 class SlotFlowLogicException extends \LogicException implements SlotFlowExceptionInterface
 {
-    /** @param array<string, mixed> $debugContext */
+    /**
+     * Create one SlotFlow logic exception with optional structured debug context.
+     *
+     * @param array<string, mixed> $debugContext
+     */
     public function __construct(
         string $message = '',
         private readonly array $debugContext = [],

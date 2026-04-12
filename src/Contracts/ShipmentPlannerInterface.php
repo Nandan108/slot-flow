@@ -17,6 +17,8 @@ use Nandan108\SlotFlow\Results\DemandShipment;
 interface ShipmentPlannerInterface
 {
     /**
+     * Build planned shipments from the provided per-line schedules.
+     *
      * @param list<DemandLineSchedule> $lineSchedules
      *
      * @return list<DemandShipment>

@@ -14,6 +14,9 @@ use Nandan108\SlotFlow\Solvers\GreedyFlowSolver;
  */
 final class MovementEngine
 {
+    /**
+     * Create one movement engine around the provided execution solver.
+     */
     public function __construct(
         private readonly ExecutionSolverInterface $solver = new GreedyFlowSolver(),
     ) {

@@ -5,8 +5,12 @@ declare(strict_types=1);
 namespace Tests;
 
 use Nandan108\SlotFlow\Codecs\DefaultSlotKeyCodec;
+use Nandan108\SlotFlow\Contracts\PlannerRuleInterface;
+use Nandan108\SlotFlow\Contracts\PolicyInterface;
 use Nandan108\SlotFlow\Exceptions\SlotFlowInvalidArgumentException;
+use Nandan108\SlotFlow\Flow;
 use Nandan108\SlotFlow\MovementEdge;
+use Nandan108\SlotFlow\NamedPolicy;
 use Nandan108\SlotFlow\QuantityState;
 use Nandan108\SlotFlow\Rules\EdgeRule;
 use Nandan108\SlotFlow\Rules\SlotRule;
@@ -69,6 +73,69 @@ final class TimeLayerTest extends TestCase
         $this->expectException(SlotFlowInvalidArgumentException::class);
         $this->expectExceptionMessage('Time values must be zero or greater.');
         $axis->parse(-1);
+    }
+
+    public function testTimeAxisAndWeeklyHelpersCoverRemainingValidationBranches(): void
+    {
+        try {
+            TimeAxis::define(bucket: 'hour', horizon: 10, aliases: ['day' => 0]);
+            self::fail('Expected invalid alias multiplier rejection.');
+        } catch (SlotFlowInvalidArgumentException $e) {
+            self::assertSame('Time alias multipliers must be positive integers.', $e->getMessage());
+        }
+
+        $axis = TimeAxis::define(bucket: 'Hour', horizon: 48, aliases: ['day' => 24], humanKeyParts: ['d']);
+        self::assertSame('1d1H', $axis->humanKey(25));
+
+        try {
+            $axis->dateTime(new \DateTimeImmutable('@-3600'));
+            self::fail('Expected pre-time-zero rejection.');
+        } catch (SlotFlowInvalidArgumentException $e) {
+            self::assertSame('Time values must not resolve before the axis time zero.', $e->getMessage());
+        }
+
+        try {
+            new WeeklyCalendarMoment(0, 12);
+            self::fail('Expected invalid weekday rejection.');
+        } catch (SlotFlowInvalidArgumentException $e) {
+            self::assertSame('Weekly calendar weekday must be between 1 (Monday) and 7 (Sunday).', $e->getMessage());
+        }
+
+        try {
+            new WeeklyCalendarMoment(1, 24);
+            self::fail('Expected invalid clock time rejection.');
+        } catch (SlotFlowInvalidArgumentException $e) {
+            self::assertSame('Weekly calendar time must be a valid clock time.', $e->getMessage());
+        }
+
+        try {
+            /** @psalm-suppress InvalidArgument */
+            WeeklyCalendarMoment::at('noday', '12:00');
+            self::fail('Expected invalid weekday name rejection.');
+        } catch (SlotFlowInvalidArgumentException $e) {
+            self::assertSame('Weekly calendar weekday must be an ISO weekday number or weekday name.', $e->getMessage());
+        }
+
+        try {
+            WeeklyCalendarMoment::at('mon', 'nope');
+            self::fail('Expected invalid time format rejection.');
+        } catch (SlotFlowInvalidArgumentException $e) {
+            self::assertSame('Weekly calendar time must use HH:MM or HH:MM:SS format.', $e->getMessage());
+        }
+
+        try {
+            WeeklyCalendarMoment::at('mon', '24:00');
+            self::fail('Expected invalid time-of-day rejection.');
+        } catch (SlotFlowInvalidArgumentException $e) {
+            self::assertSame('Weekly calendar time must be a valid clock time.', $e->getMessage());
+        }
+
+        try {
+            WeeklyCalendar::fromMap(['noday' => ['10:00']]);
+            self::fail('Expected invalid day-selector rejection.');
+        } catch (SlotFlowInvalidArgumentException $e) {
+            self::assertSame('Weekly calendar day selectors must use weekday names or ISO weekday numbers (1-7).', $e->getMessage());
+        }
     }
 
     public function testTimeAxisRejectsInvalidBucketAndHumanKeyConfigurations(): void
@@ -223,6 +290,64 @@ final class TimeLayerTest extends TestCase
         self::assertSame('2026-03-30T14:00:00+00:00', $axis->timeZero->format(DATE_ATOM));
     }
 
+    public function testTimeAxisCoversConstructorValidationParsingAndDateRoundingBranches(): void
+    {
+        try {
+            new TimeAxis('hour', 3600, 'not-a-date', 24);
+            self::fail('Expected invalid time-zero rejection.');
+        } catch (SlotFlowInvalidArgumentException $e) {
+            self::assertSame('Time axis zero point must be a valid datetime string or DateTimeImmutable.', $e->getMessage());
+        }
+
+        try {
+            new TimeAxis('hour', 0, new \DateTimeImmutable('@0'), 24);
+            self::fail('Expected invalid bucket-size rejection.');
+        } catch (SlotFlowInvalidArgumentException $e) {
+            self::assertSame('Time bucket size must be greater than zero seconds.', $e->getMessage());
+        }
+
+        try {
+            new TimeAxis('hour', 3600, new \DateTimeImmutable('@0'), -1);
+            self::fail('Expected invalid horizon rejection.');
+        } catch (SlotFlowInvalidArgumentException $e) {
+            self::assertSame('Time horizon must be zero or greater.', $e->getMessage());
+        }
+
+        $axis = TimeAxis::define(
+            bucket: 'hour',
+            horizon: 48,
+            aliases: ['day' => 24],
+            timeZero: new \DateTimeImmutable('2026-03-30T00:00:00+00:00'),
+        );
+
+        self::assertSame('h0', $axis->humanKey(0));
+        self::assertSame(12, $axis->parse('12'));
+        self::assertSame(1, $axis->ceil(new \DateTimeImmutable('2026-03-30T00:00:01+00:00')));
+        self::assertSame(1, $axis->ceil('1h'));
+        self::assertSame('2026-03-30T12:00:00+00:00', $axis->dateTime(new \DateTimeImmutable('2026-03-30T12:59:59+00:00'))->format(DATE_ATOM));
+
+        try {
+            $axis->parse('');
+            self::fail('Expected empty time rejection.');
+        } catch (SlotFlowInvalidArgumentException $e) {
+            self::assertSame('Time value cannot be empty.', $e->getMessage());
+        }
+
+        try {
+            $axis->parse(new \DateTimeImmutable('2026-03-29T23:00:00+00:00'));
+            self::fail('Expected before-time-zero rejection.');
+        } catch (SlotFlowInvalidArgumentException $e) {
+            self::assertSame('Time values must not resolve before the axis time zero.', $e->getMessage());
+        }
+
+        try {
+            TimeAxis::define('fortnight', 10);
+            self::fail('Expected custom-bucket seconds rejection.');
+        } catch (SlotFlowInvalidArgumentException $e) {
+            self::assertSame('TimeAxis::define() requires secondsInBucket for non-standard buckets.', $e->getMessage());
+        }
+    }
+
     public function testWeeklyCalendarResolvesNextMatchingBucketAtOrAfterTheEarliestTime(): void
     {
         $axis = TimeAxis::define(
@@ -237,6 +362,26 @@ final class TimeLayerTest extends TestCase
 
         self::assertSame(42, $calendar->nextTime($axis, 24));
         self::assertSame(105, $calendar->nextTime($axis, 72));
+    }
+
+    public function testWeeklyCalendarCanRejectWhenNoMatchingTimeFallsWithinTheAxisHorizon(): void
+    {
+        $axis = TimeAxis::define(
+            bucket: 'hour',
+            horizon: 24,
+            aliases: ['day' => 24],
+            timeZero: new \DateTimeImmutable('2026-03-30T00:00:00+00:00'),
+        );
+        $calendar = new WeeklyCalendar([
+            WeeklyCalendarMoment::at('fri', '09:00'),
+        ]);
+
+        try {
+            $calendar->nextTime($axis, 0);
+            self::fail('Expected nextTime() to reject when no matching time lies within the axis horizon.');
+        } catch (SlotFlowInvalidArgumentException $e) {
+            self::assertSame('Weekly calendar could not resolve a next matching time.', $e->getMessage());
+        }
     }
 
     public function testWeeklyCalendarUsesWallClockTimesAcrossDstTransitions(): void
@@ -309,6 +454,92 @@ final class TimeLayerTest extends TestCase
         ]);
 
         self::assertSame([1, 5, 6, 7], array_map(static fn (WeeklyCalendarMoment $moment): int => $moment->isoWeekday, $calendar->moments));
+    }
+
+    public function testWeeklyCalendarRejectsEmptyCalendarsAndEmptyMerges(): void
+    {
+        try {
+            new WeeklyCalendar([]);
+            self::fail('Expected empty weekly calendar rejection.');
+        } catch (SlotFlowInvalidArgumentException $e) {
+            self::assertSame('Weekly calendar must define at least one weekly moment or window.', $e->getMessage());
+        }
+
+        try {
+            WeeklyCalendar::merge();
+            self::fail('Expected empty weekly calendar merge rejection.');
+        } catch (SlotFlowInvalidArgumentException $e) {
+            self::assertSame('Weekly calendar merge requires at least one calendar.', $e->getMessage());
+        }
+    }
+
+    public function testWeeklyCalendarFromMapRejectsInvalidSelectorsAndWindowExpressions(): void
+    {
+        try {
+            WeeklyCalendar::fromMap(['mon,,wed' => ['10:00']]);
+            self::fail('Expected empty day-selector segment rejection.');
+        } catch (SlotFlowInvalidArgumentException $e) {
+            self::assertSame('Weekly calendar day selectors must not contain empty segments.', $e->getMessage());
+        }
+
+        try {
+            WeeklyCalendar::fromMap(['8' => ['10:00']]);
+            self::fail('Expected invalid numeric weekday rejection.');
+        } catch (SlotFlowInvalidArgumentException $e) {
+            self::assertSame('Weekly calendar day selectors must use weekday names or ISO weekday numbers (1-7).', $e->getMessage());
+        }
+
+        try {
+            WeeklyCalendar::fromMap(['funday' => ['10:00']]);
+            self::fail('Expected invalid weekday token rejection.');
+        } catch (SlotFlowInvalidArgumentException $e) {
+            self::assertSame('Weekly calendar day selectors must use weekday names or ISO weekday numbers (1-7).', $e->getMessage());
+        }
+
+        try {
+            WeeklyCalendar::fromMap(['mon' => ['16:00-13:00']]);
+            self::fail('Expected descending window rejection.');
+        } catch (SlotFlowInvalidArgumentException $e) {
+            self::assertSame('Weekly calendar windows must end after they start on the same weekday.', $e->getMessage());
+        }
+    }
+
+    public function testWeeklyCalendarWindowRejectsCrossDayWindowsAndExposesHelpers(): void
+    {
+        try {
+            new WeeklyCalendarWindow(
+                WeeklyCalendarMoment::at('mon', '10:00'),
+                WeeklyCalendarMoment::at('tue', '11:00'),
+            );
+            self::fail('Expected cross-day weekly window rejection.');
+        } catch (SlotFlowInvalidArgumentException $e) {
+            self::assertSame('Weekly calendar windows require start and end moments on the same weekday.', $e->getMessage());
+        }
+
+        $window = WeeklyCalendarWindow::between('wed', '09:00', '11:00');
+        $weekStart = new \DateTimeImmutable('2026-03-30T00:00:00+00:00');
+
+        self::assertSame('window:3:09:00:00-11:00:00', $window->signature());
+        self::assertSame('2026-04-01T09:00:00+00:00', $window->startDateTime($weekStart)->format(DATE_ATOM));
+        self::assertSame('2026-04-01T11:00:00+00:00', $window->endDateTime($weekStart)->format(DATE_ATOM));
+        self::assertGreaterThan(0, $window->compareTo(WeeklyCalendarWindow::between('mon', '09:00', '11:00')));
+    }
+
+    public function testWeeklyCalendarMomentHelpersAndValidation(): void
+    {
+        $moment = WeeklyCalendarMoment::at('fri', '09:15:30');
+
+        self::assertSame(5, WeeklyCalendarMoment::weekday('fri'));
+        self::assertSame('09:15:30', $moment->clockTime());
+        self::assertSame('moment:5:09:15:30', $moment->signature());
+        self::assertGreaterThan(0, $moment->compareTo(WeeklyCalendarMoment::at('thu', '09:15:30')));
+
+        try {
+            WeeklyCalendarMoment::at('fri', '25:00');
+            self::fail('Expected invalid time-of-day rejection.');
+        } catch (SlotFlowInvalidArgumentException $e) {
+            self::assertSame('Weekly calendar time must be a valid clock time.', $e->getMessage());
+        }
     }
 
     public function testWeeklyCalendarCanRejectNonexistentLocalTimes(): void
@@ -471,6 +702,66 @@ final class TimeLayerTest extends TestCase
         self::assertSame('cust.sd@2d8h', $edges[1]->to->humanKey());
     }
 
+    public function testTimedSlotSpaceCoversDurationDispatchAndPlannerHelperBranches(): void
+    {
+        $plannerRule = new class implements PlannerRuleInterface, PolicyInterface {
+        };
+        $space = SlotSpace::defineTimed(
+            dimensions: [
+                'loc' => ['src', 'dest'],
+                'stt' => ['fs', 'sd'],
+            ],
+            timeAxis: TimeAxis::define('hour', 12),
+        )->edgeRules([
+            EdgeRule::allowLabeled('ship', 'src.fs', 'dest.sd', ['duration' => 1])->plannerRules($plannerRule),
+        ])->flow(
+            'ship',
+            static fn (Flow $flow) => $flow->stepByLabeledEdges('ship')->policies(NamedPolicy::as('planner', $plannerRule)),
+        );
+
+        $timed = TimedSlotSpace::fromBaseSpace($space);
+        self::assertInstanceOf(TimedQuantityState::class, $timed->timedQuantityState(new QuantityState($space, [['src.fs', 1]]), 0));
+        self::assertCount(1, $timed->getEdgesFrom($timed->slot('src.fs', 0))[1]->plannerRules());
+
+        try {
+            TimedSlotSpace::fromBaseSpace(
+                baseSpace: $space,
+                durationResolver: static fn (): array => [],
+            )->getEdgesFrom($timed->slot('src.fs', 0));
+            self::fail('Expected invalid closure duration rejection.');
+        } catch (SlotFlowInvalidArgumentException $e) {
+            self::assertSame('Timed movement edge duration must be an int or time expression string.', $e->getMessage());
+        }
+
+        try {
+            TimedSlotSpace::fromBaseSpace(
+                baseSpace: $space,
+                dispatchCalendar: static fn (): string => 'later',
+            )->getEdgesFrom($timed->slot('src.fs', 0));
+            self::fail('Expected invalid dispatch calendar rejection.');
+        } catch (SlotFlowInvalidArgumentException $e) {
+            self::assertSame('Dispatch calendar must resolve to an integer time index.', $e->getMessage());
+        }
+    }
+
+    public function testTimedQuantityStateCopyAndTimedSlotInputBranches(): void
+    {
+        $space = SlotSpace::defineTimed(
+            dimensions: [
+                'loc' => ['src'],
+                'stt' => ['fs'],
+            ],
+            timeAxis: TimeAxis::define('hour', 6),
+        );
+        $timed = TimedSlotSpace::fromBaseSpace($space);
+        $slot = $timed->slot('src.fs', 1);
+        $state = new TimedQuantityState($timed, [[$slot, 2]]);
+        $copy = $state->copy();
+
+        self::assertSame(2, $state->get($slot));
+        self::assertSame(2, $copy->get($slot));
+    }
+
     public function testTimedSlotSpaceSkipsEdgesThatArriveBeyondTheHorizon(): void
     {
         $space = $this->makeTimedBaseSpace()->edgeRules([
@@ -625,6 +916,60 @@ final class TimeLayerTest extends TestCase
                 'Timed slot tuples must provide either a TimedSlot, a serialized timed key, or a separate time value.',
                 $e->getMessage(),
             );
+        }
+    }
+
+    public function testTimedQuantityStateAcceptsBaseSlotTuplesAndTimedSlotSpaceRejectsBadDispatchData(): void
+    {
+        $space = SlotSpace::defineTimed(
+            dimensions: [
+                'loc' => ['sup', 'plant'],
+                'stt' => ['raw'],
+            ],
+            timeAxis: TimeAxis::define('tick', 4),
+        )->edgeRules([
+            EdgeRule::allow('sup.raw', 'plant.raw'),
+        ]);
+
+        $timedSpace = TimedSlotSpace::fromBaseSpace($space, dispatchCalendar: static fn (): int => -1);
+        $timedState = new TimedQuantityState($timedSpace, [
+            [$space->slot('sup.raw'), 3, 1],
+        ]);
+
+        self::assertSame(3, $timedState->get('sup.raw@t1'));
+
+        try {
+            $timedSpace->getEdgesFrom($timedSpace->slot('sup.raw', 0));
+            self::fail('Expected early-dispatch rejection.');
+        } catch (SlotFlowInvalidArgumentException $e) {
+            self::assertSame(
+                'Dispatch calendar cannot move a departure earlier than the current timed slot.',
+                $e->getMessage(),
+            );
+        }
+
+        $badDurationSpace = TimedSlotSpace::fromBaseSpace(
+            $space,
+            durationResolver: static fn (): array => [],
+        );
+
+        try {
+            $badDurationSpace->getEdgesFrom($badDurationSpace->slot('sup.raw', 0));
+            self::fail('Expected invalid duration resolver return type.');
+        } catch (SlotFlowInvalidArgumentException $e) {
+            self::assertSame('Timed movement edge duration must be an int or time expression string.', $e->getMessage());
+        }
+
+        $badDispatchTypeSpace = TimedSlotSpace::fromBaseSpace(
+            $space,
+            dispatchCalendar: static fn (): string => 'later',
+        );
+
+        try {
+            $badDispatchTypeSpace->getEdgesFrom($badDispatchTypeSpace->slot('sup.raw', 0));
+            self::fail('Expected invalid dispatch calendar return type.');
+        } catch (SlotFlowInvalidArgumentException $e) {
+            self::assertSame('Dispatch calendar must resolve to an integer time index.', $e->getMessage());
         }
     }
 

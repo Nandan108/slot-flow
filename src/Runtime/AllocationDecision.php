@@ -13,6 +13,9 @@ use Nandan108\SlotFlow\MovementEdge;
  */
 final class AllocationDecision
 {
+    /**
+     * Create one explicit allocation decision for a candidate edge.
+     */
     public function __construct(
         public readonly MovementEdge $edge,
         public readonly int | float $quantity,

@@ -20,6 +20,7 @@ use Nandan108\SlotFlow\Runtime\AllocationDecision;
 use Nandan108\SlotFlow\Runtime\FlowContext;
 use Nandan108\SlotFlow\Slot;
 use Nandan108\SlotFlow\SlotSpace;
+use Nandan108\SlotFlow\Solvers\Concerns\ResolvesFlowParameters;
 
 /**
  * Executes movement flows directly with greedy semantics.
@@ -30,6 +31,8 @@ use Nandan108\SlotFlow\SlotSpace;
  */
 final class GreedyFlowSolver implements ExecutionSolverInterface
 {
+    use ResolvesFlowParameters;
+
     /**
      * @param array<mixed>               $appContext
      * @param array<string, scalar|null> $params
@@ -200,32 +203,6 @@ final class GreedyFlowSolver implements ExecutionSolverInterface
         }
 
         return $resolved;
-    }
-
-    /**
-     * @param array<string, string> $params
-     */
-    private function resolveStringParameter(string $value, array $params): string
-    {
-        if (!$params) {
-            return $value;
-        }
-
-        if (1 === preg_match('/^\{([-a-z_]*)\}$/i', $value, $matches)) {
-            return $params[$matches[1]] ?? $value ?: $value;
-        }
-
-        $resolved = preg_replace_callback(
-            '/\{([-a-z_]*)\}/i',
-            static function (array $matches) use ($params) {
-                $resolved = $params[$matches[1]] ?? null;
-
-                return $resolved ?? "\{$matches[0]\}" ?: "\{$matches[0]\}";
-            },
-            $value,
-        );
-
-        return $resolved ?? $value ?: $value;
     }
 
     /**

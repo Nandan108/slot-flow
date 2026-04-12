@@ -79,7 +79,7 @@ final class SlotRule
     }
 
     /**
-     * Create a list of allow rules for the given patterns.
+     * Create a list of deny rules for the given patterns.
      *
      * @param list<string|array<int|string, ?non-empty-string>> $patterns
      *

@@ -13,6 +13,9 @@ use Nandan108\SlotFlow\MovementEdge;
  */
 final class MovementEvent
 {
+    /**
+     * Create one applied movement event.
+     */
     public function __construct(
         public readonly MovementEdge $edge,
         public readonly int | float $quantity,

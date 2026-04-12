@@ -18,6 +18,8 @@ use Nandan108\SlotFlow\Internal\SlotPattern;
 final class Slot implements \ArrayAccess
 {
     /**
+     * Create one concrete or nil slot instance.
+     *
      * @param non-empty-string                           $key
      * @param ?array<non-empty-string, non-empty-string> $dimensions
      * @param array<string, mixed>                       $attributes
@@ -100,6 +102,8 @@ final class Slot implements \ArrayAccess
     }
 
     /**
+     * Return true when this slot matches the provided slot pattern.
+     *
      * @psalm-param TSlotPattern $pattern
      */
     public function matches(array | string | null $pattern): bool
@@ -128,6 +132,9 @@ final class Slot implements \ArrayAccess
     }
 
     #[\Override]
+    /**
+     * Return true when the given offset maps to an available slot dimension.
+     */
     public function offsetExists(mixed $offset): bool
     {
         return match (true) {
@@ -138,6 +145,9 @@ final class Slot implements \ArrayAccess
     }
 
     #[\Override]
+    /**
+     * Return one dimension value by name or positional index.
+     */
     public function offsetGet(mixed $offset): ?string
     {
         /** @psalm-suppress MixedArrayOffset */
@@ -149,12 +159,18 @@ final class Slot implements \ArrayAccess
     }
 
     #[\Override]
+    /**
+     * Reject attempts to mutate slot dimensions through array access.
+     */
     public function offsetSet(mixed $offset, mixed $value): void
     {
         throw new \LogicException('Slot dimensions are immutable.');
     }
 
     #[\Override]
+    /**
+     * Reject attempts to unset slot dimensions through array access.
+     */
     public function offsetUnset(mixed $offset): void
     {
         throw new \LogicException('Slot dimensions are immutable.');

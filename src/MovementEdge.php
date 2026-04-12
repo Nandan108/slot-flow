@@ -26,6 +26,9 @@ final class MovementEdge
     ) {
     }
 
+    /**
+     * Return a readable `(from) -> (to)` representation of the edge.
+     */
     public function __toString(): string
     {
         return "($this->from) -> ($this->to)";

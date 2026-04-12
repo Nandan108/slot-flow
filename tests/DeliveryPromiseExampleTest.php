@@ -4,14 +4,20 @@ declare(strict_types=1);
 
 namespace Tests;
 
+use Nandan108\SlotFlow\Contracts\AllocationPolicyInterface;
+use Nandan108\SlotFlow\Contracts\EdgeFilterPolicyInterface;
+use Nandan108\SlotFlow\Contracts\EdgeOrderingPolicyInterface;
 use Nandan108\SlotFlow\Contracts\ScheduleSolverInterface;
 use Nandan108\SlotFlow\Flow;
 use Nandan108\SlotFlow\MovementEdge;
 use Nandan108\SlotFlow\MovementEngine;
 use Nandan108\SlotFlow\MovementSchedule;
+use Nandan108\SlotFlow\PlanRequest;
 use Nandan108\SlotFlow\QuantityState;
 use Nandan108\SlotFlow\Results\ScheduledStep;
 use Nandan108\SlotFlow\Rules\EdgeRule;
+use Nandan108\SlotFlow\Runtime\AllocationDecision;
+use Nandan108\SlotFlow\Runtime\FlowContext;
 use Nandan108\SlotFlow\ScheduleRequest;
 use Nandan108\SlotFlow\SlotSpace;
 use Nandan108\SlotFlow\Solvers\EarliestArrivalSolver;
@@ -285,6 +291,115 @@ final class DeliveryPromiseExampleTest extends TestCase
         self::assertSame([], $wrongTargetSchedule->steps);
         self::assertSame(2, $wrongTargetSchedule->remaining);
         self::assertFalse($wrongTargetSchedule->isComplete());
+    }
+
+    public function testEarliestArrivalSolverCoversInterfacePoliciesAndBacktrackingBranches(): void
+    {
+        $space = SlotSpace::defineTimed(
+            dimensions: [
+                'loc' => ['sup1', 'sup2', 'wh1', 'wh2', 'cust', 'overflow'],
+                'stt' => ['fs', 'sd'],
+            ],
+            timeAxis: TimeAxis::define('hour', 48),
+        )->edgeRules([
+            EdgeRule::allowLabeled('collect', 'sup1.fs', 'wh1.fs', ['duration' => 1]),
+            EdgeRule::allowLabeled('collect', 'sup2.fs', 'wh2.fs', ['duration' => 1]),
+            EdgeRule::allowLabeled('deliver', 'wh2.fs', 'overflow.sd', ['duration' => 1]),
+            EdgeRule::allowLabeled('deliver', 'wh2.fs', 'cust.sd', ['duration' => 1]),
+        ]);
+
+        $filter = new class implements EdgeFilterPolicyInterface {
+            #[\Override]
+            public function filterEdges(FlowContext $ctx): array
+            {
+                return $ctx->edges;
+            }
+        };
+        $order = new class implements EdgeOrderingPolicyInterface {
+            #[\Override]
+            public function orderEdges(FlowContext $ctx): array
+            {
+                $edges = $ctx->edges;
+                usort(
+                    $edges,
+                    static fn (MovementEdge $left, MovementEdge $right): int => strcmp($right->to->key, $left->to->key),
+                );
+
+                return $edges;
+            }
+        };
+        $allocation = new class implements AllocationPolicyInterface {
+            #[\Override]
+            public function allocate(FlowContext $ctx): array
+            {
+                return [
+                    new AllocationDecision($ctx->edges[0], 0),
+                    new AllocationDecision($ctx->edges[1], $ctx->quantity),
+                ];
+            }
+        };
+
+        $flow = Flow::define('promise', fn (Flow $flow) => $flow
+            ->stepByLabeledEdges('{collect}')
+            ->filter($filter)
+            ->stepByLabeledEdges('deliver')
+            ->filter($filter)
+            ->orderBy($order)
+            ->allocate($allocation));
+
+        $schedule = (new EarliestArrivalSolver())->schedule(new ScheduleRequest(
+            state: new QuantityState($space, [['sup1.fs', 1], ['sup2.fs', 1]]),
+            space: $space,
+            flow: $flow,
+            quantity: 1,
+            target: 'cust.sd',
+            params: ['collect' => 'collect'],
+        ));
+
+        self::assertTrue($schedule->isComplete());
+        self::assertCount(2, $schedule->steps);
+        self::assertSame('sup2.fs', $schedule->steps[0]->edge->from->slot->key);
+        self::assertSame('wh2.fs', $schedule->steps[1]->edge->from->slot->key);
+        self::assertSame('sched-1', $schedule->step('sched-1')?->id);
+    }
+
+    public function testPlanRequestSupportsTimelessPlanningWhileScheduleRequestRequiresATimeAxis(): void
+    {
+        $space = SlotSpace::define(
+            dimensions: [
+                'loc' => ['src', 'dest'],
+                'stt' => ['fs'],
+            ],
+        )->edgeRules([
+            EdgeRule::allowLabeled('ship', 'src.fs', 'dest.fs'),
+        ])->flow(
+            'ship',
+            static fn (Flow $flow) => $flow->stepByLabeledEdges('ship'),
+        );
+
+        $plan = new PlanRequest(
+            state: new QuantityState($space, [['src.fs', 1]]),
+            space: $space,
+            flow: 'ship',
+            quantity: 1,
+            target: 'dest.fs',
+            params: ['lane' => 42],
+        );
+
+        self::assertSame('ship', $plan->flow->name());
+        self::assertSame('dest.fs', $plan->target->key);
+        self::assertSame(['lane' => '42'], $plan->params);
+
+        $this->expectException(\Nandan108\SlotFlow\Exceptions\SlotFlowInvalidArgumentException::class);
+        $this->expectExceptionMessage('Schedule requests require a TimeAxis on the SlotSpace.');
+
+        new ScheduleRequest(
+            state: new QuantityState($space, [['src.fs', 1]]),
+            space: $space,
+            flow: 'ship',
+            quantity: 1,
+            target: 'dest.fs',
+        );
     }
 
     /**

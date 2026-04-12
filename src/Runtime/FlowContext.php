@@ -17,6 +17,8 @@ use Nandan108\SlotFlow\SlotSpace;
 class FlowContext
 {
     /**
+     * Create one runtime policy-evaluation context.
+     *
      * @param list<MovementEdge> $edges
      * @param array<mixed>       $context
      */

@@ -17,6 +17,8 @@ use Nandan108\SlotFlow\SlotSpace;
 interface ExecutionSolverInterface
 {
     /**
+     * Execute one resolved flow against one quantity state.
+     *
      * @param array<mixed>               $appContext
      * @param array<string, scalar|null> $params
      */

@@ -2,7 +2,10 @@
     "name": "nandan108/slot-flow",
     "description": "SlotFlow is a domain-neutral, deterministic engine for modeling and executing quantity flows across a multidimensional state space.",
     "type": "library",
-    "license": "MIT",
+    "license": [
+        "GPL-2.0-or-later",
+        "LicenseRef-SlotFlow-Commercial"
+    ],
     "autoload": {
         "psr-4": {
             "Nandan108\\SlotFlow\\": "src/"
@@ -14,14 +17,15 @@
         }
     },
     "require": {
-        "php": "^8.3"
+        "php": "^8.1"
     },
     "require-dev": {
-        "php": "^8.3",
-        "nunomaduro/collision": "^8.6",
-        "phpunit/phpunit": "^11.5.50",
+        "phpunit/phpunit": "^10.0",
+        "symfony/var-dumper": "^6.0 || ^7.0",
         "vimeo/psalm": "^6.12",
+        "nunomaduro/collision": "^6.4",
         "friendsofphp/php-cs-fixer": "^3.92",
+        "wikimedia/composer-merge-plugin": "^2.1",
         "phpdocumentor/shim": "^3.9"
     },
     "authors": [
@@ -39,7 +43,8 @@
     },
     "config": {
         "allow-plugins": {
-            "phpdocumentor/shim": true
+            "phpdocumentor/shim": true,
+            "wikimedia/composer-merge-plugin": true
         }
     }
 }

@@ -258,67 +258,18 @@ $space->flow('reserve', static fn (Flow $c) => $c
 
 In practice:
 
-## 5. Delivery Promise Scheduling
+## 5. Planning And Time-Based Features
 
-If your `SlotSpace` has a `TimeAxis`, you can plan earliest-arrival movement schedules with `EarliestArrivalSolver`.
-Use this when you want a plan first, before mutating the live `QuantityState`.
+SlotFlow `v0.2.0` adds a second layer above the core movement engine:
 
-This is useful for:
+- `MovementPlanner` for timeless path planning
+- `TimeAxis` and `TimedSlotSpace` for time-aware spaces
+- `ScheduleRequest` and `EarliestArrivalSolver` for earliest-arrival planning
+- `DemandScheduler` and release policies for multi-line promise and shipment planning
 
-- delivery-promise calculation
-- inbound and transfer planning
-- dispatch scheduling
-- backorder ETA estimation
+These concepts are useful, but they are also denser than the base movement model. To keep this guide focused on the core engine, they are documented separately in [time-planning-guide.md](time-planning-guide.md).
 
-Example:
-
-```php
-use Nandan108\SlotFlow\Flow;
-use Nandan108\SlotFlow\Rules\EdgeRule;
-use Nandan108\SlotFlow\ScheduleRequest;
-use Nandan108\SlotFlow\Solvers\EarliestArrivalSolver;
-use Nandan108\SlotFlow\Time\TimeAxis;
-
-$space = SlotSpace::defineTimed(
-    dimensions: [
-        'loc' => ['sup', 'wh', 'cust'],
-        'stt' => ['po', 'fs', 'sd'],
-    ],
-    timeAxis: TimeAxis::define(bucket: 'hour', horizon: 24 * 7, aliases: ['day' => 24]),
-)->edgeRules([
-    EdgeRule::allowLabeled('receive-standard', 'sup.po', 'wh.fs', ['duration' => '2d']),
-    EdgeRule::allowLabeled('receive-express', 'sup.po', 'wh.fs', ['duration' => '1d']),
-    EdgeRule::allowLabeled('ship-standard', 'wh.fs', 'cust.sd', ['duration' => '1d']),
-])->flow(
-    'promise-deliver',
-    static fn (Flow $flow) => $flow
-        ->stepByLabeledEdges('receive-standard', 'receive-express')
-        ->stepByLabeledEdges('ship-standard'),
-);
-
-$schedule = (new EarliestArrivalSolver())->schedule(new ScheduleRequest(
-    state: $inventory,
-    space: $space,
-    flow: 'promise-deliver',
-    quantity: 4,
-    target: 'cust.sd',
-));
-```
-
-The resulting `MovementSchedule` gives you:
-
-- timed steps
-- arrival milestones
-- net timed deltas
-- a concrete earliest arrival for the requested quantity
-
-- use a `Flow` object when building or testing a flow inline
-- use a registered flow name when the flow is part of the slot-space model and should be reused consistently
-- registered names pair naturally with parameterized flows, because the caller only needs to provide `params` for the current execution
-
-`Cascade` remains available as a deprecated compatibility alias for `Flow`.
-
-## 5. Execute Movements
+## 6. Execute Movements
 
 Single-subject execution:
 
@@ -359,7 +310,7 @@ This same `params` mechanism works when the `cascade` argument receives a regist
 SlotFlow treats invalid patterns, definitions, and lookups as modeling/API errors. All library-thrown exceptions implement `Nandan108\SlotFlow\Exceptions\SlotFlowExceptionInterface`, so callers can catch that interface for library-wide handling or the SPL-compatible `SlotFlowInvalidArgumentException` and `SlotFlowLogicException` subclasses for narrower handling. When available, `debugContext(): array` provides structured diagnostics about the failing input or state.
 
 
-## 6. Batch Execution
+## 7. Batch Execution
 
 Use `QuantityStateBatch` when you want to execute the same flow for many subjects.
 
@@ -401,7 +352,7 @@ That is useful not just for catalog variants, but for any domain where the moved
 - resource bucket
 - batch type
 
-## 7. Understand The Result
+## 8. Understand The Result
 
 `MovementResult` contains the full event history for one execution.
 
@@ -419,7 +370,7 @@ Each `MovementEvent` contains:
 - `initialTo`
 - derived helpers: `finalFrom()` and `finalTo()`
 
-## 8. Outgress Helpers
+## 9. Outgress Helpers
 
 SlotFlow does not persist anything itself. Instead, it gives you helpers for the two common outgress needs.
 
@@ -474,7 +425,7 @@ The recommended split is:
 
 This is one of the main boundaries of the library. SlotFlow computes the movement. Your application decides how to persist, enrich, correlate, authorize, and transact it.
 
-## 9. Policy Context And Dynamic Inventory Attributes
+## 10. Policy Context And Dynamic Inventory Attributes
 
 Policies receive a `Runtime\FlowContext`, which exposes:
 
@@ -494,7 +445,7 @@ This is the intended hook for dynamic, inventory-instance metadata (e.g. subject
 
 Those values should not be modeled as canonical slot metadata when they vary by inventory item or ingestion batch.
 
-## 10. Naming
+## 11. Naming
 
 Inside the generic library, the preferred term is `subject`.
 
@@ -509,7 +460,7 @@ The important distinction is:
 - core engine vocabulary stays generic
 - example and application vocabulary stays domain-legible
 
-## 11. What SlotFlow Is Not
+## 12. What SlotFlow Is Not
 
 SlotFlow is not trying to be:
 

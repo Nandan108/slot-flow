@@ -24,6 +24,9 @@ class Flow
     /** @var list<FlowStep> */
     private array $steps = [];
 
+    /**
+     * Create one named flow definition.
+     */
     public function __construct(string $name)
     {
         $this->name = $name;
@@ -38,6 +41,17 @@ class Flow
         $builder($flow);
 
         return $flow;
+    }
+
+    /**
+     * Copy one compiled flow into a new instance of the called class.
+     */
+    public static function fromFlow(self $flow): static
+    {
+        $copy = new static($flow->name);
+        $copy->steps = $flow->steps;
+
+        return $copy;
     }
 
     /**

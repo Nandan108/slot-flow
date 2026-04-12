@@ -13,7 +13,17 @@ use Nandan108\SlotFlow\Contracts\AllocationPolicyInterface;
 use Nandan108\SlotFlow\Contracts\EdgeFilterPolicyInterface;
 use Nandan108\SlotFlow\Contracts\EdgeOrderingPolicyInterface;
 use Nandan108\SlotFlow\Contracts\ExecutionSolverInterface;
+use Nandan108\SlotFlow\Contracts\PlannerRuleInterface;
+use Nandan108\SlotFlow\Contracts\PolicyInterface;
 use Nandan108\SlotFlow\Contracts\QttyConstraintPolicyInterface;
+use Nandan108\SlotFlow\Contracts\ScheduleSolverInterface;
+use Nandan108\SlotFlow\Contracts\ShipmentCalendarRuleInterface;
+use Nandan108\SlotFlow\Contracts\ShipmentSplitRuleInterface;
+use Nandan108\SlotFlow\Demand;
+use Nandan108\SlotFlow\DemandLine;
+use Nandan108\SlotFlow\DemandReleaseContext;
+use Nandan108\SlotFlow\DemandScheduler;
+use Nandan108\SlotFlow\DemandScheduleRequest;
 use Nandan108\SlotFlow\Exceptions\SlotFlowExceptionInterface;
 use Nandan108\SlotFlow\Exceptions\SlotFlowInvalidArgumentException;
 use Nandan108\SlotFlow\Exceptions\SlotFlowLogicException;
@@ -22,18 +32,30 @@ use Nandan108\SlotFlow\Internal\SlotPattern;
 use Nandan108\SlotFlow\MovementEdge;
 use Nandan108\SlotFlow\MovementEngine;
 use Nandan108\SlotFlow\MovementResult;
+use Nandan108\SlotFlow\MovementSchedule;
+use Nandan108\SlotFlow\NamedPolicy;
 use Nandan108\SlotFlow\Policies\AvailableQuantitySortPolicy;
 use Nandan108\SlotFlow\Policies\DimensionPriority;
 use Nandan108\SlotFlow\Policies\DistancePolicy;
+use Nandan108\SlotFlow\Policies\PartialShipmentPolicy;
+use Nandan108\SlotFlow\PolicyBuckets;
 use Nandan108\SlotFlow\QuantityState;
+use Nandan108\SlotFlow\Results\DemandShipmentLine;
 use Nandan108\SlotFlow\Results\LedgerEntry;
 use Nandan108\SlotFlow\Results\MovementEvent;
+use Nandan108\SlotFlow\Results\ScheduledStep;
 use Nandan108\SlotFlow\Rules\EdgeRule;
 use Nandan108\SlotFlow\Rules\SlotRule;
 use Nandan108\SlotFlow\Runtime\AllocationDecision;
 use Nandan108\SlotFlow\Runtime\FlowContext;
+use Nandan108\SlotFlow\ScheduleRequest;
 use Nandan108\SlotFlow\Slot;
 use Nandan108\SlotFlow\SlotSpace;
+use Nandan108\SlotFlow\Time\TimeAxis;
+use Nandan108\SlotFlow\Time\TimedDurationContext;
+use Nandan108\SlotFlow\Time\TimedMovementEdge;
+use Nandan108\SlotFlow\Time\TimedSlotSpace;
+use Nandan108\SlotFlow\TimelineShipmentPlanner;
 use PHPUnit\Framework\TestCase;
 
 final class LibraryCoverageTest extends TestCase
@@ -147,6 +169,104 @@ final class LibraryCoverageTest extends TestCase
         } catch (SlotFlowInvalidArgumentException $e) {
             self::assertStringContainsString("cannot contain alternative character '|'", $e->getMessage());
         }
+    }
+
+    public function testPolicyAndSlotHelpersCoverRemainingAccessorBranches(): void
+    {
+        $space = SlotSpace::defineTimed([
+            'loc' => ['src', 'dest'],
+            'stt' => ['fs', 'sd'],
+        ], TimeAxis::define('hour', 24))->flow('ship', static fn (Flow $flow) => $flow->move('src.fs', 'dest.sd'));
+
+        $plannerRule = new class implements PlannerRuleInterface, PolicyInterface {
+        };
+        $shipmentRule = new class implements ShipmentCalendarRuleInterface {
+            #[\Override]
+            public function releaseTime(
+                DemandReleaseContext $context,
+                DemandShipmentLine $line,
+                ScheduledStep $step,
+                int $earliestReleaseTime,
+            ): int {
+                return $earliestReleaseTime;
+            }
+        };
+
+        $edge = (new MovementEdge($space->slot('src.fs'), $space->slot('dest.sd'), 'ship'))->meta(
+            PolicyBuckets::mergeEdgeAttributes([], [NamedPolicy::as('planner', $plannerRule), $shipmentRule]),
+        );
+
+        self::assertCount(2, $edge->policies());
+        self::assertCount(2, $edge->plannerRules());
+        self::assertCount(1, $edge->shipmentCalendarRules());
+
+        $slot = $space->slot('src.fs')->withMeta(['lane' => 'truck']);
+        self::assertTrue($slot->equals($space->slot('src.fs')));
+        self::assertTrue(isset($slot['loc']));
+        self::assertTrue(isset($slot[0]));
+        self::assertFalse(isset($slot['missing']));
+        self::assertSame('src', $slot['loc']);
+        self::assertSame('src', $slot[0]);
+        self::assertSame([], $slot->with(['loc' => 'missing']));
+
+        try {
+            $slot['loc'] = 'dest';
+            self::fail('Expected immutable slot offsetSet rejection.');
+        } catch (\LogicException $e) {
+            self::assertSame('Slot dimensions are immutable.', $e->getMessage());
+        }
+
+        try {
+            unset($slot['loc']);
+            self::fail('Expected immutable slot offsetUnset rejection.');
+        } catch (\LogicException $e) {
+            self::assertSame('Slot dimensions are immutable.', $e->getMessage());
+        }
+
+        $timedSpace = TimedSlotSpace::fromBaseSpace($space);
+        $timedEdge = new TimedMovementEdge(
+            from: $timedSpace->slot('src.fs', 0),
+            to: $timedSpace->slot('dest.sd', 1),
+            baseEdge: $edge,
+            label: 'ship',
+            attributes: ['duration' => 1] + PolicyBuckets::mergeEdgeAttributes([], [NamedPolicy::as('planner', $plannerRule)]),
+        );
+        $scheduled = new ScheduledStep('sched-1', $timedEdge, 1, [NamedPolicy::as('planner', $plannerRule)]);
+        self::assertCount(1, $scheduled->plannerRules());
+
+        $event = new MovementEvent($edge, 2, 5, 1);
+        self::assertSame(3, $event->finalFrom());
+        self::assertSame(3, $event->finalTo());
+        /** @psalm-suppress DeprecatedMethod */
+        self::assertSame(2, $event->ledgerEntry(['source' => 'test'])->quantity);
+
+        $inventory = new QuantityState($space, [[$space->slot('src.fs')->withMeta(['bin' => 'A']), 2, ['bin' => 'A']]]);
+        self::assertSame(['src.fs' => ['bin' => 'A']], $inventory->allSlotAttributes());
+
+        $splitRule = new class implements ShipmentSplitRuleInterface {
+        };
+        self::assertSame([], PolicyBuckets::planner([]));
+        self::assertSame([], PolicyBuckets::shipmentCalendar([]));
+        self::assertSame([], PolicyBuckets::shipmentSplit([]));
+        self::assertSame([], PolicyBuckets::all([]));
+        self::assertSame([], PolicyBuckets::resolveCategory([], PolicyBuckets::matchesAny(...)));
+        self::assertSame(['x' => 1], PolicyBuckets::mergeEdgeAttributes(['x' => 1], []));
+
+        try {
+            PolicyBuckets::mergeEdgeAttributes([], [$plannerRule, new class implements PolicyInterface {
+            }]);
+            self::fail('Expected non-planner edge policy rejection.');
+        } catch (SlotFlowInvalidArgumentException $e) {
+            self::assertSame('EdgeRule::policies() only accepts planner policies.', $e->getMessage());
+        }
+
+        $flow = Flow::define('bucket-flow', static fn (Flow $flow) => $flow->move('src.fs', 'dest.sd'));
+        $step = $flow->steps()[0];
+        PolicyBuckets::applyToStep($step, []);
+        PolicyBuckets::applyToStep($step, [NamedPolicy::as('planner', $plannerRule), $shipmentRule, $splitRule]);
+        self::assertCount(3, $step->plannerPolicies);
+        self::assertCount(1, $step->shipmentCalendarPolicies);
+        self::assertCount(1, $step->shipmentSplitPolicies);
     }
 
     /** @psalm-type TRow array{variant: non-empty-string, loc: non-empty-string, qty: int} $rows */
@@ -956,5 +1076,175 @@ final class LibraryCoverageTest extends TestCase
 
         self::assertSame(99, $result->remaining);
         self::assertSame(3, $state->get('foo.fs'));
+    }
+
+    public function testDemandSchedulerAndTimelineShipmentPlannerCoverRemainingArrivalBranches(): void
+    {
+        $space = SlotSpace::defineTimed(
+            dimensions: [
+                'loc' => ['src', 'other', 'cust'],
+                'stt' => ['fs', 'sd'],
+            ],
+            timeAxis: TimeAxis::define('hour', 6),
+        )->flow('ship', static fn (Flow $flow) => $flow->move('src.fs', 'cust.sd'));
+
+        $timedSpace = TimedSlotSpace::fromBaseSpace($space);
+        $offTarget = new TimedMovementEdge(
+            $timedSpace->slot('src.fs', 0),
+            $timedSpace->slot('other.sd', 1),
+            new MovementEdge($space->slot('src.fs'), $space->slot('other.sd')),
+        );
+        $targetHold = new TimedMovementEdge(
+            $timedSpace->slot('cust.sd', 0),
+            $timedSpace->slot('cust.sd', 2),
+            null,
+            'hold',
+            ['duration' => 2],
+        );
+        $movementSchedule = new MovementSchedule([
+            new ScheduledStep('sched-off-target', $offTarget, 1),
+            new ScheduledStep('sched-hold', $targetHold, 1),
+        ], 0);
+
+        $scheduler = new DemandScheduler(new class($movementSchedule) implements ScheduleSolverInterface {
+            public function __construct(private readonly MovementSchedule $schedule)
+            {
+            }
+
+            public function schedule(ScheduleRequest $request): MovementSchedule
+            {
+                return $this->schedule;
+            }
+        });
+
+        $request = new DemandScheduleRequest(
+            demand: new Demand([new DemandLine('sku', 1)]),
+            space: $space,
+            flow: 'ship',
+            target: 'cust.sd',
+            statesBySubjectKey: ['sku' => new QuantityState($space, [['src.fs', 1]])],
+            releasePolicy: new PartialShipmentPolicy(),
+        );
+
+        $schedule = $scheduler->schedule($request);
+
+        self::assertCount(1, $schedule->lines[0]->arrivals);
+        self::assertSame(2, $schedule->lines[0]->arrivals[0]->time);
+        self::assertSame([2], array_map(static fn ($shipment): int => $shipment->releaseTime, $schedule->shipments));
+        self::assertSame([], (new TimelineShipmentPlanner())->plan($request, []));
+    }
+
+    /** @psalm-suppress InvalidArgument, DeprecatedMethod */
+    public function testSlotSpaceAndResultGuardsCoverRemainingBranches(): void
+    {
+        $space = SlotSpace::defineTimed(
+            dimensions: [
+                'loc' => ['src', 'dest'],
+                'stt' => ['fs', 'sd'],
+            ],
+            timeAxis: TimeAxis::define('hour', 4),
+        );
+
+        $overridden = SlotPattern::from(null, $space)->partialOverride('src.fs')->expand();
+        self::assertSame(['src.fs'], array_keys($overridden));
+        self::assertSame('true', $space->subjectKey(true));
+        self::assertSame('false', $space->subjectKey(false));
+        self::assertSame('stringable', $space->subjectKey(new class implements \Stringable {
+            public function __toString(): string
+            {
+                return 'stringable';
+            }
+        }));
+        self::assertSame($space->slot('src.fs'), $space->trySlot($space->slot('src.fs')));
+        self::assertSame($space, $space->edgeRules([]));
+
+        try {
+            new LedgerEntry(new MovementEdge($space->slot('src.fs'), $space->slot('dest.sd')), 1, null, 0);
+            self::fail('Expected missing source quantity to be rejected.');
+        } catch (\InvalidArgumentException $e) {
+            self::assertSame('initialFrom must be provided for non-nil sources', $e->getMessage());
+        }
+
+        try {
+            new LedgerEntry(new MovementEdge($space->slot('src.fs'), $space->slot('dest.sd')), 1, 0, null);
+            self::fail('Expected missing destination quantity to be rejected.');
+        } catch (\InvalidArgumentException $e) {
+            self::assertSame('initialTo must be provided for non-nil sinks', $e->getMessage());
+        }
+
+        $event = new MovementEvent(new MovementEdge($space->slot('src.fs'), $space->slot('dest.sd')), 1, 2, 3);
+        self::assertCount(2, $event->mutations());
+
+        try {
+            /** @psalm-suppress InvalidArgument */
+            $space->setDurationResolver(new \stdClass());
+            self::fail('Expected invalid duration resolver.');
+        } catch (SlotFlowInvalidArgumentException $e) {
+            self::assertSame(
+                'Timed duration resolver must be a Closure or TimedDurationResolverInterface instance.',
+                $e->getMessage(),
+            );
+        }
+
+        $space->setDurationResolver(static fn (): array => []);
+        $durationResolver = $space->getDurationResolver();
+        $context = new TimedDurationContext(
+            TimedSlotSpace::fromBaseSpace($space),
+            $space->timeAxis,
+            TimedSlotSpace::fromBaseSpace($space)->slot('src.fs', 0),
+            new MovementEdge($space->slot('src.fs'), $space->slot('dest.sd')),
+            0,
+        );
+
+        try {
+            $durationResolver?->resolve(new MovementEdge($space->slot('src.fs'), $space->slot('dest.sd')), $context);
+            self::fail('Expected invalid duration resolver return type.');
+        } catch (SlotFlowInvalidArgumentException $e) {
+            self::assertSame('Timed movement edge duration must be an int or time expression string.', $e->getMessage());
+        }
+
+        $space->setDispatchCalendar(static fn (): string => 'later');
+        try {
+            $space->getDispatchCalendar()?->dispatchTime(new MovementEdge($space->slot('src.fs'), $space->slot('dest.sd')), $context);
+            self::fail('Expected invalid dispatch calendar return type.');
+        } catch (SlotFlowInvalidArgumentException $e) {
+            self::assertSame('Dispatch calendar must resolve to an integer time index.', $e->getMessage());
+        }
+    }
+
+    public function testMovementEngineParamResolutionCoversSlotAndEmptyStringBranches(): void
+    {
+        $space = SlotSpace::define([
+            'loc' => ['src', 'dest'],
+            'stt' => ['fs', 'sd'],
+        ]);
+
+        $state = new QuantityState($space, [['src.fs', 1]]);
+        $slotFlow = Flow::define('param-resolution', static fn (Flow $flow) => $flow
+            ->move('src.fs', ['loc' => '{dest}', 'stt' => 'sd']));
+
+        /** @psalm-suppress InvalidArgument */
+        $result = (new MovementEngine())->execute(
+            inventory: $state,
+            space: $space,
+            cascade: $slotFlow,
+            quantity: 1,
+            params: ['dest' => 'dest', '' => 'ignored', 0 => 'ignored', 'nullish' => null],
+        );
+
+        self::assertTrue($result->isComplete());
+
+        try {
+            (new MovementEngine())->execute(
+                inventory: new QuantityState($space, [['src.fs', 1]]),
+                space: $space,
+                cascade: Flow::define('bad-array-pattern', static fn (Flow $flow) => $flow->move(['loc' => '{slot}', 'stt' => 'fs'], 'dest.sd')),
+                quantity: 1,
+                params: ['slot' => ''],
+            );
+            self::fail('Expected empty resolved pattern value.');
+        } catch (SlotFlowInvalidArgumentException $e) {
+            self::assertSame("Value '{slot}' is not valid for dimension 'loc'. Expected values: src, dest", $e->getMessage());
+        }
     }
 }

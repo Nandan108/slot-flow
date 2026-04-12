@@ -21,6 +21,8 @@ use Nandan108\SlotFlow\SlotSpace;
 class QuantityStateBatch
 {
     /**
+     * Create one batch from prebuilt per-subject items.
+     *
      * @param array<BatchItem> $items
      *
      * @psalm-param array<BatchItem<TSubject>> $items

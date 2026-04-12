@@ -27,6 +27,18 @@ final class WeeklyShipmentCalendarRule implements ShipmentCalendarRuleInterface
     }
 
     /**
+     * Build one weekly calendar from a weekday => list of moment/window expressions map.
+     *
+     * Example: `['mon-thu,fri' => ['10:00', '13:00-16:00'], '6,7' => ['09:00']]`
+     *
+     * @param array<int|string, string|list<string>> $map
+     */
+    public static function fromMap(array $map): self
+    {
+        return new self(WeeklyCalendar::fromMap($map));
+    }
+
+    /**
      * Return the first shipment release time that matches the configured weekly schedule.
      *
      * @throws SlotFlowInvalidArgumentException

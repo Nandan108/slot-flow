@@ -11,12 +11,8 @@ use Nandan108\SlotFlow\Exceptions\SlotFlowInvalidArgumentException;
  *
  * @api
  */
-final class ScheduleRequest
+final class ScheduleRequest extends PlanRequest
 {
-    public readonly Flow $flow;
-    public readonly Slot $target;
-    /** @var array<string, string> */
-    public readonly array $params;
     public readonly int $startTime;
 
     /**
@@ -27,37 +23,25 @@ final class ScheduleRequest
      * @param Slot|non-empty-string      $target
      */
     public function __construct(
-        public readonly QuantityState $state,
-        public readonly SlotSpace $space,
+        QuantityState $state,
+        SlotSpace $space,
         Flow | string $flow,
-        public readonly int | float $quantity,
+        int | float $quantity,
         Slot | string $target,
         \DateTimeImmutable | int | string $startTime = 0,
         array $params = [],
     ) {
-        // Resolve the flow from either a Flow instance, a string key, or the space's default flow if only a space is provided.
-        $this->flow = $flow instanceof Flow ? $flow : $space->getFlow($flow);
+        parent::__construct($state, $space, $flow, $quantity, $target, $params);
 
-        // Resolve the target slot from either a Slot instance or a string key.
-        $this->target = $space->slot($target);
-
-        // Parse the request start time using the space's time axis if available, otherwise default to integer parsing.
-        if (null !== $space->timeAxis) {
-            $this->startTime = $space->timeAxis->parse($startTime);
-        } elseif (is_int($startTime)) {
-            $this->startTime = $startTime;
-        } elseif (is_string($startTime) && ctype_digit($startTime)) {
-            $this->startTime = (int) $startTime;
-        } else {
+        if (null === $space->timeAxis) {
             throw new SlotFlowInvalidArgumentException(
-                'Schedule requests without a TimeAxis require an integer bucket start time.',
+                'Schedule requests require a TimeAxis on the SlotSpace.',
                 ['start_time' => $startTime],
             );
         }
-        $this->originTime = $this->startTime;
 
-        // Normalize all params to strings for easier downstream handling, since they are primarily intended for use as string keys.
-        $this->params = array_map('strval', $params);
+        $this->startTime = $space->timeAxis->parse($startTime);
+        $this->originTime = $this->startTime;
     }
 
     public readonly int $originTime;

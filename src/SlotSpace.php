@@ -91,6 +91,8 @@ final class SlotSpace
     private array $outgoingEdgeByOriginSlot = [];
 
     /**
+     * Define one untimed slot space from dimensions.
+     *
      * @param array<non-empty-string, list<non-empty-string>> $dimensions
      * @param ?class-string<SlotCodec>                        $codecClass
      *
@@ -104,6 +106,8 @@ final class SlotSpace
     }
 
     /**
+     * Define one timed slot space from dimensions and a time axis.
+     *
      * @param array<non-empty-string, list<non-empty-string>> $dimensions
      * @param ?class-string<SlotCodec>                        $codecClass
      *
@@ -123,6 +127,8 @@ final class SlotSpace
     }
 
     /**
+     * Create one slot space from dimensions and optional time configuration.
+     *
      * @param array<non-empty-string, list<non-empty-string>> $dimensions
      * @param ?class-string<SlotCodec>                        $codecClass
      *
@@ -161,17 +167,25 @@ final class SlotSpace
         $this->setDurationResolver($typedDurationResolver);
     }
 
+    /**
+     * Return the configured duration resolver, if any.
+     */
     public function getDurationResolver(): ?TimedDurationResolverInterface
     {
         return $this->durationResolver;
     }
 
+    /**
+     * Return the configured dispatch calendar, if any.
+     */
     public function getDispatchCalendar(): ?DispatchCalendarInterface
     {
         return $this->dispatchCalendar;
     }
 
     /**
+     * Set the resolver used to convert base edges into timed durations.
+     *
      * @psalm-param TimedDurationResolverInterface|TDurationResolverClosure|null $durationResolver
      */
     public function setDurationResolver(mixed $durationResolver): self
@@ -181,6 +195,9 @@ final class SlotSpace
         return $this;
     }
 
+    /**
+     * Set the dispatch calendar that may delay when timed edges may depart.
+     */
     public function setDispatchCalendar(
         DispatchCalendarInterface | callable | null $dispatchCalendar,
     ): self {
@@ -789,31 +806,15 @@ final class SlotSpace
     public function cascade(string $name, \Closure | array $builder): self
     {
         /** @psalm-suppress DeprecatedClass */
-        if (isset($this->flows[$name])) {
-            throw new SlotFlowInvalidArgumentException(
-                "Cascade '$name' already defined",
-                ['cascade' => $name],
-            );
-        }
+        isset($this->flows[$name]) && throw new SlotFlowInvalidArgumentException(
+            "Cascade '$name' already defined",
+            ['cascade' => $name],
+        );
 
         if (is_array($builder)) {
-            $cascade = Cascade::define(
-                $name,
-                static function (Cascade $cascade) use ($builder): void {
-                    foreach ($builder as $edgePattern) {
-                        /** @psalm-suppress DocblockTypeContradiction */
-                        if (array_is_list($edgePattern)) {
-                            /** @var array{TSlotPattern, TSlotPattern} $edgePattern */
-                            $cascade->move($edgePattern[0], $edgePattern[1]);
-                        } else {
-                            /** @var array{from:TSlotPattern, to:TSlotPattern} $edgePattern */
-                            $cascade->move($edgePattern['from'], $edgePattern['to']);
-                        }
-                    }
-                },
-            );
-            $this->flows[$name] = $cascade;
-            $this->cascades[$name] = $cascade;
+            $this->flow($name, $builder);
+            /** @psalm-suppress DeprecatedClass, NoValue */
+            $this->cascades[$name] = Cascade::fromFlow($this->flows[$name]);
 
             return $this;
         }
@@ -839,12 +840,10 @@ final class SlotSpace
      */
     public function flow(string $name, \Closure | array $builder): self
     {
-        if (isset($this->flows[$name])) {
-            throw new SlotFlowInvalidArgumentException(
-                "Flow '$name' already defined",
-                ['flow' => $name],
-            );
-        }
+        isset($this->flows[$name]) && throw new SlotFlowInvalidArgumentException(
+            "Flow '$name' already defined",
+            ['flow' => $name],
+        );
 
         if (is_array($builder)) {
             $flow = Flow::define(
@@ -904,34 +903,9 @@ final class SlotSpace
         $flow = $this->flows[$name];
 
         /** @psalm-suppress DeprecatedClass */
-        /** @psalm-suppress MixedArgumentTypeCoercion */
         return $flow instanceof Cascade
             ? $flow
-            : Cascade::define($flow->name(), static function (Cascade $cascade) use ($flow): void {
-                foreach ($flow->steps() as $step) {
-                    if (null !== $step->edgeLabels) {
-                        $builder = $cascade->stepByLabeledEdges(...$step->edgeLabels);
-                    } else {
-                        $builder = $cascade->move($step->from, $step->to);
-                    }
-
-                    foreach (array_reverse($step->orderingPolicies) as $policy) {
-                        $builder->orderBy($policy);
-                    }
-
-                    foreach ($step->filterPolicies as $policy) {
-                        $builder->filter($policy);
-                    }
-
-                    foreach ($step->quantityConstraintPolicies as $policy) {
-                        $builder->constraint($policy);
-                    }
-
-                    foreach ($step->allocationPolicies as $policy) {
-                        $builder->allocate($policy);
-                    }
-                }
-            });
+            : Cascade::fromFlow($flow);
     }
 
     private function defaultSubjectKey(mixed $subject): string

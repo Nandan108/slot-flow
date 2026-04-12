@@ -231,7 +231,7 @@ final class TimeAxis
     /**
      * Parse a time key or duration expression into canonical bucket count.
      *
-     * Examples: `h12`, `d3`, `d3s1`, `12`.
+     * Examples: `h12`, `3d`, `d3s1`, `3ds1`, `12`.
      */
     public function parse(int | string | \DateTimeImmutable $value): int
     {
@@ -425,6 +425,10 @@ final class TimeAxis
         }
     }
 
+    /**
+     * Normalize the given time zero to align with the bucket boundaries.
+     * This ensures that the time zero is always a multiple of the bucket size.
+     */
     private function normalizeTimeZero(\DateTimeImmutable $timeZero): \DateTimeImmutable
     {
         $timestamp = $timeZero->getTimestamp();

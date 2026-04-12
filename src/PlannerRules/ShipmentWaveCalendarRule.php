@@ -21,6 +21,8 @@ use Nandan108\SlotFlow\Results\ScheduledStep;
 final class ShipmentWaveCalendarRule implements ShipmentCalendarRuleInterface
 {
     /**
+     * Create one recurring shipment-wave rule.
+     *
      * @throws SlotFlowInvalidArgumentException
      */
     public function __construct(

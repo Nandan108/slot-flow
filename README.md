@@ -1,4 +1,5 @@
 # SlotFlow
+
 ![CI](https://github.com/nandan108/slot-flow/actions/workflows/ci.yml/badge.svg)
 ![Coverage](https://codecov.io/gh/nandan108/slot-flow/branch/main/graph/badge.svg)
 ![Style](https://img.shields.io/badge/style-php--cs--fixer-brightgreen)
@@ -58,10 +59,19 @@ It is likely overkill for simple stock counters or single-location systems.
 
 ## Install
 
-SlotFlow currently requires PHP 8.3.
+SlotFlow currently requires PHP 8.1 or newer.
 
 ```bash
 composer require nandan108/slot-flow
+
+## Licensing
+
+SlotFlow is dual-licensed:
+
+- `GPL-2.0-or-later` for open-source use under GPL-compatible terms
+- a separate commercial license for proprietary or otherwise non-GPL-compatible use
+
+See [LICENSE](LICENSE), [LICENSE-GPL-2.0-or-later](LICENSE-GPL-2.0-or-later), and [LICENSE-SlotFlow-Commercial](LICENSE-SlotFlow-Commercial).
 ```
 
 ## Minimal Example
@@ -79,9 +89,8 @@ $space = SlotSpace::define([
 ])
 ->flow('reserve', static fn (Flow $flow) => $flow
     ->move(['stt' => 'fs'], ['stt' => 'res'])
-    ->orderBy(new DimensionPriority([
-        'loc' => ['wh*', 'sup'],
-])));
+    ->orderBy(new DimensionPriority(['loc' => ['wh*', 'sup']]))
+);
 
 $inventory = new QuantityState($space, [
     ['wh1.fs', 5],
@@ -193,8 +202,11 @@ Deprecated compatibility aliases:
 
 ## Guide
 
-- [Guide](docs/guide.md): step-by-step usage, patterns, ingestion, execution, and batch processing
+- [Guide](docs/guide.md): core SlotFlow concepts, execution, and batch processing
+- [Time And Planning Guide](docs/time-planning-guide.md): timeless planning, timed slot spaces, earliest-arrival scheduling, and demand scheduling
 - [Commerce Example](docs/commerce-example.md): a fuller e-commerce flow model
+- [v0.2.0 notes](docs/release-notes-v0.2.0.md): summary of the timed layer, planners, and demand scheduling additions
+- [Changelog](CHANGELOG.md): release-by-release project history
 - Generated API docs: https://nandan108.github.io/slot-flow
 
 ## Origin
@@ -218,11 +230,27 @@ For historical reference, the original implementation is preserved here:
 
 ## Quality
 
-- 100% automated test coverage
+- 99% automated test coverage
 - Psalm level 1 clean
-- CI runs PHPUnit on PHP 8.3, 8.4, and 8.5
+- CI runs Psalm, coverage, and phpDocumentor on PHP 8.1
+- CI runs PHPUnit on PHP 8.1, 8.2, 8.3, 8.4, and 8.5
 - Generated API docs published from source via phpDocumentor
+
+## Release Status
+
+`v0.2.0` is the first release that adds a full timed planning layer:
+
+- `TimeAxis`, `TimedSlotSpace`, and timed edges
+- `MovementPlanner` for timeless path planning
+- `ScheduleRequest` and `EarliestArrivalSolver` for timed planning
+- `DemandScheduler` and shipment release policies for order-level promise calculation
+
+The core execution engine remains the most mature part of the library. The timed and demand-scheduling APIs are documented and tested, but they should still be expected to evolve as more real-world use cases are applied to them.
 
 ## License
 
-MIT. See [LICENSE](LICENSE).
+SlotFlow is dual-licensed under `GPL-2.0-or-later` or the SlotFlow commercial license.
+See [LICENSE](LICENSE), [LICENSE-GPL-2.0-or-later](LICENSE-GPL-2.0-or-later), [LICENSE-SlotFlow-Commercial](LICENSE-SlotFlow-Commercial), and [NOTICE](NOTICE).
+
+Organizations using SlotFlow in proprietary or otherwise non-GPL-compatible software must obtain a separate commercial license.
+Reduced-fee or no-fee commercial licenses may be available on request for qualified nonprofit, humanitarian, and public-interest organizations.

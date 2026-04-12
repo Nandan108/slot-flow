@@ -45,6 +45,8 @@ final class WeeklyCalendarMoment
 
     /**
      * Build one weekly calendar moment from a weekday name/number and `HH:MM[:SS]` time string.
+     *
+     * @param int|'mon'|'monday'|'tue'|'tues'|'tuesday'|'wed'|'wednesday'|'thu'|'thur'|'thurs'|'thursday'|'fri'|'friday'|'sat'|'saturday'|'sun'|'sunday' $weekday
      */
     public static function at(int | string $weekday, string $time): self
     {
@@ -113,14 +115,14 @@ final class WeeklyCalendarMoment
         $normalized = strtolower($weekday);
 
         return match ($normalized) {
-            'mon', 'monday' => 1,
-            'tue', 'tues', 'tuesday' => 2,
-            'wed', 'wednesday' => 3,
+            'mon', 'monday'                    => 1,
+            'tue', 'tues', 'tuesday'           => 2,
+            'wed', 'wednesday'                 => 3,
             'thu', 'thur', 'thurs', 'thursday' => 4,
-            'fri', 'friday' => 5,
-            'sat', 'saturday' => 6,
-            'sun', 'sunday' => 7,
-            default => throw new SlotFlowInvalidArgumentException(
+            'fri', 'friday'                    => 5,
+            'sat', 'saturday'                  => 6,
+            'sun', 'sunday'                    => 7,
+            default                            => throw new SlotFlowInvalidArgumentException(
                 'Weekly calendar weekday must be an ISO weekday number or weekday name.',
                 ['weekday' => $weekday],
             ),

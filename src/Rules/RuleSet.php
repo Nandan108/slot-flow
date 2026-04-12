@@ -14,6 +14,8 @@ namespace Nandan108\SlotFlow\Rules;
 final class RuleSet
 {
     /**
+     * Create one possibly nested rule-set container.
+     *
      * @param array<SlotRule|EdgeRule|RuleSet> $rules
      *
      * @psalm-param array<TRuleType|RuleSet<TRuleType>> $rules
@@ -24,6 +26,8 @@ final class RuleSet
     }
 
     /**
+     * Create one rule set from individual rules or nested rule sets.
+     *
      * @template TFromRuleType of SlotRule|EdgeRule
      *
      * @psalm-param TFromRuleType|RuleSet<TFromRuleType> ...$rules

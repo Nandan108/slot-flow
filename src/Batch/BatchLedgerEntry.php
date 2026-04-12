@@ -16,6 +16,8 @@ use Nandan108\SlotFlow\MovementEdge;
 final class BatchLedgerEntry
 {
     /**
+     * Create one batch-scoped ledger entry.
+     *
      * @param TSubject             $subject
      * @param array<string, mixed> $context
      */
@@ -29,6 +31,9 @@ final class BatchLedgerEntry
     ) {
     }
 
+    /**
+     * Return the source quantity after this ledgered batch movement, or null for nil sources.
+     */
     public function finalFrom(): int | float | null
     {
         if (null === $this->initialFrom) {
@@ -39,6 +44,9 @@ final class BatchLedgerEntry
         return $this->initialFrom - $this->quantity;
     }
 
+    /**
+     * Return the destination quantity after this ledgered batch movement, or null for nil sinks.
+     */
     public function finalTo(): int | float | null
     {
         if (null === $this->initialTo) {
