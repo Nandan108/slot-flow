@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Nandan108\SlotFlow\Policies;
 
 use Nandan108\SlotFlow\Contracts\EdgeOrderingPolicyInterface;
+use Nandan108\SlotFlow\Contracts\SerializablePolicy;
 use Nandan108\SlotFlow\MovementEdge;
 use Nandan108\SlotFlow\Runtime\FlowContext;
 use Nandan108\SlotFlow\Slot;
@@ -15,7 +16,7 @@ use Nandan108\SlotFlow\SlotSpace;
  *
  * @api
  */
-final class DimensionPriority implements EdgeOrderingPolicyInterface
+final class DimensionPriority implements EdgeOrderingPolicyInterface, SerializablePolicy
 {
     /** @var array<non-empty-string, array<non-empty-string, int>> */
     private array $rankByDimensionValueCache = [];
@@ -57,6 +58,21 @@ final class DimensionPriority implements EdgeOrderingPolicyInterface
         }
 
         return $this->rankByDimensionValueCache;
+    }
+
+    #[\Override]
+    public function toDefinition(): array
+    {
+        return ['type' => 'DimensionPriority', 'priorities' => $this->priorities];
+    }
+
+    #[\Override]
+    public static function fromDefinition(array $data): static
+    {
+        /** @var array<non-empty-string, list<non-empty-string>> $priorities */
+        $priorities = $data['priorities'];
+
+        return new static($priorities);
     }
 
     /**
