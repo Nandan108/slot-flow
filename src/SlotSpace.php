@@ -509,7 +509,7 @@ final class SlotSpace
             if (null === $pattern) {
                 return [null];
             }
-        } elseif (array_is_list($pattern)) {
+        } elseif ([] !== $pattern && array_is_list($pattern)) {
             if (count($pattern) !== count($this->dimensionNames)) {
                 throw new SlotFlowInvalidArgumentException(
                     'Slot pattern tuple must have the same number of elements as dimensions: '.count($this->dimensionNames),
