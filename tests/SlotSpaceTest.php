@@ -108,6 +108,28 @@ final class SlotSpaceTest extends TestCase
         self::assertSame(['bar', 'foo', 'faz'], $space->codec->matchDimensionValues('loc', 'bar|f*'));
     }
 
+    public function testSlashSeparatedLocCodesSurviveExactAndWildcardMatching(): void
+    {
+        // Hierarchical loc codes (e.g. 'oh/main', 'trs/dsp') contain '/', which is the
+        // regex delimiter used internally by the wildcard matcher. Regression guard for
+        // the delimiter collision that made partial-path patterns ('oh/*') blow up.
+        $space = SlotSpace::define([
+            'loc'   => ['oh/main', 'oh/trs', 'trs/dsp', 'trs/rto'],
+            'stt'   => ['atp', 'ctd'],
+        ]);
+
+        // exact key round-trips through serialize/deserialize unharmed
+        self::assertSame('oh/main.atp', $space->slot('oh/main.atp')->key);
+        self::assertSame(['loc' => 'oh/main', 'stt' => 'atp'], $space->slot('oh/main.atp')->dimensions);
+
+        // slash-free wildcard against slash-containing values (value is the grep subject)
+        self::assertSame(['oh/main', 'oh/trs'], $space->codec->matchDimensionValues('loc', 'oh*'));
+
+        // partial-PATH wildcard — the pattern itself contains '/' (the regression case)
+        self::assertSame(['oh/main', 'oh/trs'], $space->codec->matchDimensionValues('loc', 'oh/*'));
+        self::assertSame(['trs/dsp', 'trs/rto'], $space->codec->matchDimensionValues('loc', 'trs/*'));
+    }
+
     public function testMatchExpandsMissingDimensionsInPartialArrays(): void
     {
         $space = $this->makeWarehouseSpace();

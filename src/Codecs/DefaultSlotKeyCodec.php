@@ -246,7 +246,10 @@ class DefaultSlotKeyCodec implements SlotCodec
                     continue;
                 }
                 $parts = explode(self::WILDCARD, $subPattern);
-                $regex = '/^'.implode('.*', array_map('preg_quote', $parts)).'$/';
+                // preg_quote must escape the '/' delimiter too, so dimension values
+                // containing '/' (hierarchical loc codes like 'oh/main') don't collide
+                // with the regex delimiter and produce a malformed pattern.
+                $regex = '/^'.implode('.*', array_map(static fn (string $p): string => preg_quote($p, '/'), $parts)).'$/';
                 /** @var list<non-empty-string> $matches */
                 $matches = array_values(preg_grep($regex, $values));
                 $allMatches = [...$allMatches, ...$matches];
