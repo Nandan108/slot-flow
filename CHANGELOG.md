@@ -8,6 +8,17 @@ The format is based on Keep a Changelog, and this project uses Git tags for rele
 
 - No changes yet.
 
+## [0.2.1] - 2026-07-01
+
+### Added
+
+- `SerializablePolicy` interface, implemented by `DimensionPriority`, so a dimension-priority policy can be serialized and rehydrated.
+
+### Fixed
+
+- `destroy([])` is now treated as "match all" rather than an empty positional tuple.
+- Dimension value codes may now contain `/`, enabling hierarchical location codes (e.g. `oh/main`).
+
 ## [0.2.0] - 2026-04-12
 
 This release extends SlotFlow beyond immediate flow execution into planning, time-aware scheduling, and order-level promise calculation.
