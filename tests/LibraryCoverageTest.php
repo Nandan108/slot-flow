@@ -1244,7 +1244,13 @@ final class LibraryCoverageTest extends TestCase
             );
             self::fail('Expected empty resolved pattern value.');
         } catch (SlotFlowInvalidArgumentException $e) {
-            self::assertSame("Value '{slot}' is not valid for dimension 'loc'. Expected values: src, dest", $e->getMessage());
+            // The pattern is refused where the parameter is resolved, not later at the codec:
+            // a leftover `{slot}` reaching the codec reads as a missing dimension VALUE, which
+            // sends the reader looking in the schema instead of at the call.
+            self::assertSame(
+                'Slot pattern for dimension \'loc\' needs parameter "slot", which resolved to an empty value.',
+                $e->getMessage(),
+            );
         }
     }
 }

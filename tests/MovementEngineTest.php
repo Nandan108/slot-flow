@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests;
 
+use Nandan108\SlotFlow\Exceptions\SlotFlowInvalidArgumentException;
 use Nandan108\SlotFlow\Flow;
 use Nandan108\SlotFlow\MovementEngine;
 use Nandan108\SlotFlow\QuantityState;
@@ -186,5 +187,83 @@ final class MovementEngineTest extends TestCase
         self::assertCount(2, $result->events);
         self::assertSame('(sup.C.sd) -> (wh1.C.sd)', (string) $result->events[0]->edge);
         self::assertSame('(nil) -> (wh1.C.fs)', (string) $result->events[1]->edge);
+    }
+
+    /**
+     * One definition, both endpoints parameterized — the shape a two-location transfer needs and
+     * the reason a pattern may not be fully known when the flow is written. `from` and `to` are
+     * different values of the same dimension, which no single compile-time pattern can express.
+     */
+    public function testItResolvesBothEndpointsOfAParameterizedMove(): void
+    {
+        $space = SlotSpace::define([
+            'stt' => ['fs'],
+            'loc' => ['main', 'annex'],
+        ]);
+
+        $inventory = new QuantityState($space, [['fs.main', 6]]);
+        $transfer = Flow::define('transfer', static fn (Flow $flow) => $flow
+            ->move(['loc' => '{from}'], ['loc' => '{to}']));
+
+        $result = (new MovementEngine())->execute(
+            $inventory,
+            $space,
+            $transfer,
+            4,
+            params: ['from' => 'main', 'to' => 'annex'],
+        );
+
+        self::assertSame(0, $result->remaining);
+        self::assertSame(2, $inventory->get('fs.main'));
+        self::assertSame(4, $inventory->get('fs.annex'));
+    }
+
+    /**
+     * A parameter the caller never passed is a mistake at the call site, so the message must point
+     * there. Left to travel on, the literal `{to}` reaches the codec and is reported as an invalid
+     * *dimension value* — which reads as a schema fault and hides the real one.
+     */
+    public function testItNamesTheMissingParameterRatherThanBlamingTheDimension(): void
+    {
+        $space = SlotSpace::define([
+            'stt' => ['fs'],
+            'loc' => ['main', 'annex'],
+        ]);
+
+        $transfer = Flow::define('transfer', static fn (Flow $flow) => $flow
+            ->move(['loc' => '{from}'], ['loc' => '{to}']));
+
+        // Params supplied, but one name misspelled — the likeliest version of this mistake.
+        try {
+            (new MovementEngine())->execute(
+                new QuantityState($space, [['fs.main', 6]]),
+                $space,
+                $transfer,
+                4,
+                params: ['from' => 'main', 'too' => 'annex'],
+            );
+            self::fail('Expected the unresolved parameter to be refused.');
+        } catch (SlotFlowInvalidArgumentException $e) {
+            self::assertSame(
+                'Slot pattern for dimension \'loc\' needs parameter "to", which was not supplied — given: from, too.',
+                $e->getMessage(),
+            );
+        }
+
+        // No params at all — same refusal, and it says so rather than listing an empty set.
+        try {
+            (new MovementEngine())->execute(
+                new QuantityState($space, [['fs.main', 6]]),
+                $space,
+                $transfer,
+                4,
+            );
+            self::fail('Expected the unresolved parameter to be refused.');
+        } catch (SlotFlowInvalidArgumentException $e) {
+            self::assertSame(
+                'Slot pattern for dimension \'loc\' needs parameter "from", which was not supplied (no execute params were given).',
+                $e->getMessage(),
+            );
+        }
     }
 }

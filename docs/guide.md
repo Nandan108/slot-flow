@@ -206,15 +206,28 @@ This is useful for rollback-style flows such as releasing reservations, correcti
 
 ### Parameterized template flows
 
-Flows may contain placeholders inside string patterns, using names that match `/[-\w]+/`, for example `{loc}`, `{own}`, or `{from-state}`.
+A slot pattern may name a **parameter** instead of a literal value, using names that match `/[-\w]+/` — `{loc}`, `{own}`, `{from-state}`. Both pattern forms take them:
 
-These placeholders are substituted at execution time through `MovementEngine::execute(..., params: [...])`.
+```php
+// string form
+$flow->move('sup.{own}.{state}', '{loc}.{own}.{state}');
 
-- all placeholders used by the flow should be provided at execution time
-- placeholders that are not provided are left unchanged
-- an unsubstituted placeholder will usually break slot-pattern expansion or matching because it is not a valid dimension value
+// array form — the same thing, one dimension at a time
+$flow->move(['loc' => '{from}'], ['loc' => '{to}']);
+```
 
-This makes parameterized flows act like reusable movement templates whose concrete routing is fixed only at execution time.
+Placeholders are substituted when the flow runs, from `MovementEngine::execute(..., params: [...])`.
+
+- **Placeholders are required.** One the params do not answer throws `SlotFlowInvalidArgumentException`, naming the parameter, the dimension, and what *was* passed. The check runs where the substitution happens, so a typo in a param name is reported as a typo rather than surfacing later as an invalid dimension value.
+- Edge **labels** (`stepByLabeledEdges('{collect}')`) stay tolerant by contrast: an unresolved label matches no edge instead of throwing.
+- Params reach the solver through `$context['params']`, the same place a `constraint()` or `allocate()` callback reads them — so a flow can take a routing parameter and a quantity parameter together.
+
+One definition therefore serves every value of a dimension. That matters most for two shapes a compile-time pattern cannot express at all:
+
+- **A move whose two endpoints are both runtime values** — a transfer or putaway, where `from` and `to` are different values of the *same* dimension. Scoping the execution to one value cannot say this; two parameters can.
+- **A cascade that is fixed in shape but not in place** — "fill commitments first, then availability, in whichever warehouse this receipt landed in" is one flow, not one flow per warehouse.
+
+So reach for a parameter before reaching for a factory that builds a `Flow` per call: a parameterized flow can be registered on the space, resolved by name, and serialized, and a built one cannot.
 
 You can also register flows directly on a `SlotSpace`:
 

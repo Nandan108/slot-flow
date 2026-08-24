@@ -178,7 +178,7 @@ final class GreedyFlowSolver implements ExecutionSolverInterface
         $params = $this->resolveStringParams($context);
 
         if (is_string($pattern)) {
-            $resolved = $this->resolveStringParameter($pattern, $params);
+            $resolved = $this->resolvePatternValue($pattern, $params, null);
             if ('' === $resolved) {
                 throw new SlotFlowInvalidArgumentException('Resolved slot pattern cannot be empty string.');
             }
@@ -194,7 +194,7 @@ final class GreedyFlowSolver implements ExecutionSolverInterface
                 continue;
             }
 
-            $resolvedValue = $this->resolveStringParameter($value, $params);
+            $resolvedValue = $this->resolvePatternValue($value, $params, $key);
             if ('' === $resolvedValue) {
                 throw new SlotFlowInvalidArgumentException('Resolved slot pattern value cannot be empty string.');
             }
