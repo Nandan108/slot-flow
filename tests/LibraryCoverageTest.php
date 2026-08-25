@@ -46,6 +46,7 @@ use Nandan108\SlotFlow\Results\MovementEvent;
 use Nandan108\SlotFlow\Results\ScheduledStep;
 use Nandan108\SlotFlow\Rules\EdgeRule;
 use Nandan108\SlotFlow\Rules\SlotRule;
+use Nandan108\SlotFlow\Rules\SlotRuleBase;
 use Nandan108\SlotFlow\Runtime\AllocationDecision;
 use Nandan108\SlotFlow\Runtime\FlowContext;
 use Nandan108\SlotFlow\ScheduleRequest;
@@ -337,7 +338,7 @@ final class LibraryCoverageTest extends TestCase
         $prunedSpace = SlotSpace::define([
             'loc' => ['foo'],
             'stt' => ['fs', 'sd'],
-        ])->slotRules([SlotRule::allow('foo.fs')]);
+        ])->slotRules([SlotRule::allow('foo.fs')], SlotRuleBase::None);
 
         try {
             (new QuantityState($prunedSpace))->setTuple([['foo.sd', 1]]);

@@ -11,6 +11,7 @@ use Nandan108\SlotFlow\Internal\SlotPattern;
 use Nandan108\SlotFlow\Rules\EdgeRule;
 use Nandan108\SlotFlow\Rules\RuleSet;
 use Nandan108\SlotFlow\Rules\SlotRule;
+use Nandan108\SlotFlow\Rules\SlotRuleBase;
 use Nandan108\SlotFlow\Time\DispatchCalendarInterface;
 use Nandan108\SlotFlow\Time\TimeAxis;
 use Nandan108\SlotFlow\Time\TimedDurationContext;
@@ -215,16 +216,25 @@ final class SlotSpace
      * Inclusion rules add matching slots to the valid set, while exclusion rules remove remove them.
      *
      * Since the rules are applied sequentially, later rules may override earlier ones.
-     * The starting slot space is determined by the first rule in the list:
-     * If it is an exclusion rule, then we start with a full slot space.
-     * If it is an inclusion rule, then we start with an empty slot space.
      *
-     * @param RuleSet<SlotRule>|list<SlotRule|RuleSet<SlotRule>> $rules list of patterns to include or exclude certain slots.
-     *                                                                  If the list is empty, all combinations of dimensions are included.
-     *                                                                  Exclusion patterns start with '-', inclusion patterns start with '+' or have no prefix. Patterns are applied in order, so later patterns override earlier ones.
-     *                                                                  If the first pattern starts with '-', it is treated as an exclusion pattern and all slots are included by default. If the first pattern starts with '+', it is treated as an inclusion pattern and no slots are included by default.
+     * The starting set is **stated, not inferred** — see {@see SlotRuleBase}. An exclusion-led
+     * sequence keeps its historical meaning under the {@see SlotRuleBase::All} default; an
+     * inclusion-led one now has to say {@see SlotRuleBase::None}, which is the whole point: that
+     * spelling is the one where a mistake yields an empty space rather than a wrong one.
+     *
+     * Ordering still matters *between* rules, but only among inclusions. With the base fixed, an
+     * exclusion narrows wherever it sits in the sequence — which is what makes a rule list safe to
+     * assemble from several independent contributors. For a constraint that must not depend on
+     * ordering at all, use {@see confine()}.
+     *
+     * @param RuleSet<SlotRule>|list<SlotRule|RuleSet<SlotRule>> $rules patterns to include or exclude. An empty
+     *                                                                  list leaves the space untouched, whatever
+     *                                                                  the base — "no opinion", not "exclude all".
+     * @param SlotRuleBase                                       $base  the set the sequence starts from
+     *
+     * @throws SlotFlowInvalidArgumentException if a pattern names a dimension this space does not have
      */
-    public function slotRules(RuleSet | array $rules): self
+    public function slotRules(RuleSet | array $rules, SlotRuleBase $base = SlotRuleBase::All): self
     {
         // flatten potentially nested RuleSet into a single list of SlotRule
         $rules = (is_array($rules))
@@ -235,9 +245,23 @@ final class SlotSpace
             return $this; // no rules, keep all slots
         }
 
-        $slots = $rules[0]->allow ? [] : $this->slotsByKey;
+        // The nil slot survives whatever the base. It is not a member of the cartesian product —
+        // it is "outside the system", the endpoint every create comes from and every destroy goes
+        // to — so no rule shapes it, and starting from an empty set must not drop it or the space
+        // loses its boundary flows.
+        $slots = SlotRuleBase::None === $base
+            ? [$this->nilSlot->key => $this->nilSlot]
+            : $this->slotsByKey;
 
         foreach ($rules as $rule) {
+            // A pattern naming a dimension this space does not have matches nothing — silently,
+            // because matching compares against a null value. Left alone that reads as "the rule
+            // did not apply", which is indistinguishable from a typo and, for an inclusion over an
+            // empty base, produces a space with no slots and no explanation.
+            if (is_array($rule->pattern)) {
+                $this->validateKnownDimensionNames(array_map(strval(...), array_keys($rule->pattern)));
+            }
+
             $ruleSlots = SlotPattern::from($rule->pattern, $this)->expand();
             if ($rule->allow) {
                 foreach ($ruleSlots as $slotKey => $slot) {
@@ -251,6 +275,75 @@ final class SlotSpace
         }
 
         $this->slotsByKey = $slots;
+        $this->slotsByPattern = [];
+
+        return $this;
+    }
+
+    /**
+     * Restrict where one dimension value may occur: `$dimension = $value` is valid only on slots
+     * whose `$axis` is one of `$allowed`.
+     *
+     * A **constraint, not a sequence step**, and that is the entire difference from {@see slotRules()}.
+     * It cannot depend on ordering, because it never widens: it removes the slots carrying `$value`
+     * whose `$axis` falls outside `$allowed`, and touches nothing else. Two confinements over
+     * different values cannot interact; two over the same value intersect, which is the only honest
+     * reading of "both of these must hold".
+     *
+     * That makes it the right primitive wherever the space is assembled from independent sources.
+     * A rule sequence there needs every author to agree on a base and an order; a confinement needs
+     * neither, and structurally cannot empty the space — the worst a wrong one does is remove the
+     * slots for its own value.
+     *
+     * ```php
+     * // "pending" means in the inbound leg, so it cannot exist on premise
+     * $space->confine('stt', 'pnd', 'loc', ['sup', 'trs/inb']);
+     * ```
+     *
+     * Both dimensions must exist and `$value` must be one this space declares — a confinement over
+     * a value nothing can hold is a typo whose only symptom would be its silence.
+     *
+     * @param non-empty-string       $dimension the dimension owning the constrained value
+     * @param non-empty-string       $value     the value whose placement is constrained
+     * @param non-empty-string       $axis      the dimension the constraint reads
+     * @param list<non-empty-string> $allowed   the only `$axis` values `$value` may co-occur with;
+     *                                          empty means the value can occur nowhere at all,
+     *                                          which is refused rather than silently emptying it
+     *
+     * @throws SlotFlowInvalidArgumentException if a dimension or value is unknown, or `$allowed` is empty
+     */
+    public function confine(string $dimension, string $value, string $axis, array $allowed): self
+    {
+        $this->validateKnownDimensionNames([$dimension, $axis]);
+
+        if ([] === $allowed) {
+            throw new SlotFlowInvalidArgumentException(
+                sprintf('Confining "%s=%s" to no %s value at all would leave it nowhere to exist.', $dimension, $value, $axis),
+                ['dimension' => $dimension, 'value' => $value, 'axis' => $axis],
+            );
+        }
+
+        foreach ([[$dimension, [$value]], [$axis, $allowed]] as [$dim, $codes]) {
+            $known = $this->dimensionValues($dim);
+            foreach ($codes as $code) {
+                in_array($code, $known, true) || throw new SlotFlowInvalidArgumentException(
+                    sprintf('Unknown value "%s" for dimension "%s".', $code, $dim),
+                    ['dimension' => $dim, 'value' => $code, 'known_values' => $known],
+                );
+            }
+        }
+
+        $permitted = array_flip($allowed);
+        foreach ($this->slotsByKey as $slotKey => $slot) {
+            if ($slot->dimension($dimension) !== $value) {
+                continue;
+            }
+            $on = $slot->dimension($axis);
+            if (null === $on || !isset($permitted[$on])) {
+                unset($this->slotsByKey[$slotKey]);
+            }
+        }
+
         $this->slotsByPattern = [];
 
         return $this;
