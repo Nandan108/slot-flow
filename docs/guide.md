@@ -387,6 +387,12 @@ Each `MovementEvent` contains:
 
 SlotFlow does not persist anything itself. Instead, it gives you helpers for the two common outgress needs.
 
+Execution is pure: `MovementEngine::execute()` never modifies the `QuantityState` you pass it. It
+works against a private copy and reports the movement on the result, so nothing has happened to your
+state until you decide it has. That is what makes it safe to execute speculatively — to try two flows
+against the same starting state and keep the better one, or to abandon a movement mid-way through a
+multi-step operation without leaving the state half-applied.
+
 ### Inventory Projection
 
 Use `deltas()` when you want net per-slot deltas.
@@ -397,6 +403,15 @@ foreach ($result->deltas() as $mutation) {
     $delta = $mutation->delta;
 }
 ```
+
+Use `applyTo()` when you want the resulting state rather than the movement. It returns a copy and
+leaves the original alone, so a before/after pair stays meaningful:
+
+```php
+$after = $result->applyTo($before);
+```
+
+`QuantityState::withDelta()` is the same idea for a single slot — the immutable spelling of `add()`.
 
 For batch processing:
 

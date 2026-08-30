@@ -43,8 +43,12 @@ final class LegacyApiCompatibilityTest extends TestCase
         self::assertSame(0, $result->remaining);
         self::assertCount(1, $result->events);
         self::assertSame('(foo.fs) -> (foo.sd)', (string) $result->events[0]->edge);
-        self::assertSame(0, $inventory->get('foo.fs'));
-        self::assertSame(2, $inventory->get('foo.sd'));
+
+        $after = $result->applyTo($inventory);
+
+        self::assertSame(2, $inventory->get('foo.fs'), 'execute() must leave the caller state untouched');
+        self::assertSame(0, $after->get('foo.fs'));
+        self::assertSame(2, $after->get('foo.sd'));
     }
 
     public function testLegacyCascadeRegistrationAndLookupPreserveMessages(): void

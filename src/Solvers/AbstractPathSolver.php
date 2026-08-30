@@ -86,9 +86,10 @@ abstract class AbstractPathSolver
         QuantityState $inventory,
         int | float $quantity,
         array $params,
+        mixed $subject = null,
     ): array {
         $context = [] === $params ? [] : ['params' => $params];
-        $stepContext = new FlowContext($inventory->space(), $edges, $inventory, $quantity, null, $context);
+        $stepContext = new FlowContext($inventory->space(), $edges, $inventory, $quantity, $subject, $context);
 
         foreach ($step->filterPolicies as $policy) {
             if (!is_callable($policy) && !$policy instanceof EdgeFilterPolicyInterface) {
@@ -96,7 +97,7 @@ abstract class AbstractPathSolver
             }
 
             $edges = $this->filterEdges($policy, $stepContext);
-            $stepContext = new FlowContext($inventory->space(), $edges, $inventory, $quantity, null, $context);
+            $stepContext = new FlowContext($inventory->space(), $edges, $inventory, $quantity, $subject, $context);
         }
 
         foreach ($step->orderingPolicies as $policy) {
@@ -105,7 +106,7 @@ abstract class AbstractPathSolver
             }
 
             $edges = $this->orderEdges($policy, $stepContext);
-            $stepContext = new FlowContext($inventory->space(), $edges, $inventory, $quantity, null, $context);
+            $stepContext = new FlowContext($inventory->space(), $edges, $inventory, $quantity, $subject, $context);
         }
 
         /** @var array<string, int|float> $decisionQuantities */
@@ -131,7 +132,7 @@ abstract class AbstractPathSolver
                 }
 
                 $edges = array_values($edges);
-                $stepContext = new FlowContext($inventory->space(), $edges, $inventory, $quantity, null, $context);
+                $stepContext = new FlowContext($inventory->space(), $edges, $inventory, $quantity, $subject, $context);
             }
         }
 
@@ -142,7 +143,7 @@ abstract class AbstractPathSolver
             $requested = isset($decisionQuantities[$edgeId])
                 ? min($quantity, $decisionQuantities[$edgeId])
                 : $quantity;
-            $movable = $this->limitMovable($inventory, $edge, $requested, $quantity, $step, $context);
+            $movable = $this->limitMovable($inventory, $edge, $requested, $quantity, $step, $context, $subject);
             if ($movable <= 0) {
                 continue;
             }
@@ -205,13 +206,14 @@ abstract class AbstractPathSolver
         int | float $quantity,
         FlowStep $step,
         array $context,
+        mixed $subject = null,
     ): int | float {
         $available = $edge->from->isNil()
             ? $requested
             : min($requested, $inventory->get($edge->from));
 
         $limit = $available;
-        $stepContext = new FlowContext($inventory->space(), [$edge], $inventory, $quantity, null, $context);
+        $stepContext = new FlowContext($inventory->space(), [$edge], $inventory, $quantity, $subject, $context);
 
         foreach ($step->quantityConstraintPolicies as $policy) {
             if (!is_callable($policy) && !$policy instanceof QttyConstraintPolicyInterface) {

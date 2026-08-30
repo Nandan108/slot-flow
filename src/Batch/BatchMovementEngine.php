@@ -54,6 +54,12 @@ final class BatchMovementEngine
                     $space,
                     $cascade,
                     $item->quantity,
+                    // The batch knows which subject each item belongs to and labels its results
+                    // with it, so the policies deciding that item's movement must see it too.
+                    // Without it a per-subject rule — an allocation cap, a per-SKU backorder
+                    // limit — silently behaves as though no subject were set, and only in batch
+                    // mode, which is the mode such a rule exists for.
+                    $item->subject,
                     appContext: $context,
                     params: $params,
                 ),

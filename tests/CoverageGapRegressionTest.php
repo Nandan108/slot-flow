@@ -151,7 +151,7 @@ final class CoverageGapRegressionTest extends TestCase
             $resolvePattern->invoke($solver, ['loc' => '', 'stt' => 'fs'], []);
             self::fail('Expected empty resolved array value rejection.');
         } catch (\Nandan108\SlotFlow\Exceptions\SlotFlowInvalidArgumentException $e) {
-            self::assertSame('Resolved slot pattern value cannot be empty string.', $e->getMessage());
+            self::assertSame("Resolved slot pattern value for dimension 'loc' cannot be empty string.", $e->getMessage());
         }
     }
 

@@ -166,6 +166,24 @@ class QuantityState
     }
 
     /**
+     * Return a copy of this state with one signed delta applied, leaving this one untouched.
+     *
+     * The immutable spelling of {@see add()}. Prefer it wherever a state is being explored rather
+     * than advanced — comparing candidate movements, or holding a before/after pair — since the
+     * mutating form makes those read as if the original were still intact.
+     *
+     * Applying a whole movement is {@see MovementResult::applyTo()}, which copies once rather than
+     * once per delta.
+     */
+    public function withDelta(Slot $slot, int | float $delta): static
+    {
+        $updated = $this->copy();
+        $updated->add($slot, $delta);
+
+        return $updated;
+    }
+
+    /**
      * Clone the quantity state and remembered slot attributes.
      */
     public function copy(): static

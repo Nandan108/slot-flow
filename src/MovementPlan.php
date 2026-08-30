@@ -66,7 +66,7 @@ final class MovementPlan
         $deltas = [];
         foreach ($slotOrder as $slotKey) {
             $delta = $deltasBySlot[$slotKey];
-            if (0 === $delta->delta) {
+            if (0.0 === (float) $delta->delta) {
                 continue;
             }
 

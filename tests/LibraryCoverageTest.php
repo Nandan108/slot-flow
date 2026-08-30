@@ -1044,9 +1044,12 @@ final class LibraryCoverageTest extends TestCase
             quantity: 2,
         );
 
+        $after = $result->applyTo($state);
+
         self::assertSame(0, $result->remaining);
-        self::assertSame(0, $state->get('foo.fs'));
-        self::assertSame(2, $state->get('bar.sd'));
+        self::assertSame(2, $state->get('foo.fs'), 'execute() must leave the caller state untouched');
+        self::assertSame(0, $after->get('foo.fs'));
+        self::assertSame(2, $after->get('bar.sd'));
         self::assertSame('transfer', $space->getFlow('transfer')->name());
     }
 

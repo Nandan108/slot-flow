@@ -187,10 +187,11 @@ final class GreedyPlanSolver extends AbstractPathSolver implements PlanSolverInt
         QuantityState $inventory,
         int | float $quantity,
         array $params,
+        mixed $subject = null,
     ): array {
         /** @var array<string, array{edge: MovementEdge, quantity: int|float}> $available */
         $available = [];
-        foreach (parent::availableEdgesForStep($step, $edges, $inventory, $quantity, $params) as $entry) {
+        foreach (parent::availableEdgesForStep($step, $edges, $inventory, $quantity, $params, $subject) as $entry) {
             $edgeId = $this->edgeKey($entry['edge']);
             $available[$edgeId] = $entry;
         }

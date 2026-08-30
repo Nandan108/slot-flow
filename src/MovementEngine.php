@@ -25,6 +25,14 @@ final class MovementEngine
     /**
      * Execute one flow for one subject.
      *
+     * The quantity state passed in is **not** modified: the solver works against a private copy,
+     * and the movement is reported as events and deltas on the returned result. That makes
+     * execution a pure computation — safe to run speculatively, to compare two flows against the
+     * same starting state, or to abandon on failure without leaving the caller's state half-moved.
+     *
+     * To obtain the state that results from a movement, apply the result:
+     * `$after = $engine->execute($before, ...)->applyTo($before);`
+     *
      * @param array<mixed>               $appContext
      * @param array<string, scalar|null> $params
      */
@@ -41,6 +49,11 @@ final class MovementEngine
             $cascade = $space->getFlow($cascade);
         }
 
-        return $this->solver->execute($inventory, $space, $cascade, $quantity, $subject, $appContext, $params);
+        // The solver advances a state as it consumes edges, so it needs a mutable working copy.
+        // Copying here rather than in each solver keeps the guarantee at the one boundary every
+        // caller goes through, instead of depending on which solver is wired in.
+        $workingState = $inventory->copy();
+
+        return $this->solver->execute($workingState, $space, $cascade, $quantity, $subject, $appContext, $params);
     }
 }

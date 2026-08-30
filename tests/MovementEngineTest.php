@@ -4,8 +4,11 @@ declare(strict_types=1);
 
 namespace Tests;
 
+use Nandan108\SlotFlow\Batch\BatchMovementEngine;
+use Nandan108\SlotFlow\Batch\QuantityStateBatch;
 use Nandan108\SlotFlow\Exceptions\SlotFlowInvalidArgumentException;
 use Nandan108\SlotFlow\Flow;
+use Nandan108\SlotFlow\MovementEdge;
 use Nandan108\SlotFlow\MovementEngine;
 use Nandan108\SlotFlow\QuantityState;
 use Nandan108\SlotFlow\Runtime\AllocationDecision;
@@ -35,10 +38,13 @@ final class MovementEngineTest extends TestCase
             3,
         );
 
+        $after = $result->applyTo($inventory);
+
         self::assertSame(0, $result->remaining);
         self::assertCount(1, $result->events);
-        self::assertSame(5, $inventory->get($fooFs));
-        self::assertSame(0, $inventory->get($nil));
+        self::assertSame(2, $inventory->get($fooFs), 'execute() must leave the caller state untouched');
+        self::assertSame(5, $after->get($fooFs));
+        self::assertSame(0, $after->get($nil));
         self::assertNull($result->events[0]->initialFrom);
     }
 
@@ -62,10 +68,13 @@ final class MovementEngineTest extends TestCase
             2,
         );
 
+        $after = $result->applyTo($inventory);
+
         self::assertSame(0, $result->remaining);
         self::assertCount(1, $result->events);
-        self::assertSame(0, $inventory->get($fooFs));
-        self::assertSame(0, $inventory->get($nil));
+        self::assertSame(2, $inventory->get($fooFs), 'execute() must leave the caller state untouched');
+        self::assertSame(0, $after->get($fooFs));
+        self::assertSame(0, $after->get($nil));
         self::assertNull($result->events[0]->initialTo);
     }
 
@@ -82,10 +91,13 @@ final class MovementEngineTest extends TestCase
 
         $result = (new MovementEngine())->execute($inventory, $space, $cascade, 3);
 
+        $after = $result->applyTo($inventory);
+
         self::assertSame(1, $result->remaining);
         self::assertCount(1, $result->events);
-        self::assertSame(0, $inventory->get($space->slot('foo.fs')));
-        self::assertSame(2, $inventory->get($space->slot('foo.sd')));
+        self::assertSame(2, $inventory->get($space->slot('foo.fs')), 'execute() must leave the caller state untouched');
+        self::assertSame(0, $after->get($space->slot('foo.fs')));
+        self::assertSame(2, $after->get($space->slot('foo.sd')));
     }
 
     public function testItExecutesCascadeAllocationPolicies(): void
@@ -213,9 +225,12 @@ final class MovementEngineTest extends TestCase
             params: ['from' => 'main', 'to' => 'annex'],
         );
 
+        $after = $result->applyTo($inventory);
+
         self::assertSame(0, $result->remaining);
-        self::assertSame(2, $inventory->get('fs.main'));
-        self::assertSame(4, $inventory->get('fs.annex'));
+        self::assertSame(6, $inventory->get('fs.main'), 'execute() must leave the caller state untouched');
+        self::assertSame(2, $after->get('fs.main'));
+        self::assertSame(4, $after->get('fs.annex'));
     }
 
     /**
@@ -265,5 +280,144 @@ final class MovementEngineTest extends TestCase
                 $e->getMessage(),
             );
         }
+    }
+
+    /**
+     * Execution is a pure computation over the state it is handed.
+     *
+     * The guarantee that makes a result safe to hold, compare or discard: running the same
+     * movement twice against the same state produces the same answer, because the first run did
+     * not consume anything. Before this held, a caller that executed speculatively and then threw
+     * the result away was left with a silently half-moved state.
+     */
+    public function testExecuteDoesNotMutateTheCallerStateAndIsIdempotent(): void
+    {
+        $space = SlotSpace::define(['stt' => ['fs', 'res']])
+            ->flow('reserve', static fn (Flow $flow) => $flow->move(['stt' => 'fs'], ['stt' => 'res']));
+
+        $state = new QuantityState($space, [['fs', 10]]);
+        $engine = new MovementEngine();
+
+        $first = $engine->execute($state, $space, 'reserve', 4);
+        $second = $engine->execute($state, $space, 'reserve', 4);
+
+        self::assertSame(10, $state->get('fs'));
+        self::assertSame(0, $state->get('res'));
+        self::assertSame($first->remaining, $second->remaining);
+        self::assertEquals(
+            array_map(static fn ($d): array => [$d->slot->key, $d->delta], $first->deltas()),
+            array_map(static fn ($d): array => [$d->slot->key, $d->delta], $second->deltas()),
+        );
+    }
+
+    public function testApplyToReturnsTheResultingStateWithoutTouchingTheOriginal(): void
+    {
+        $space = SlotSpace::define(['stt' => ['fs', 'res']])
+            ->flow('reserve', static fn (Flow $flow) => $flow->move(['stt' => 'fs'], ['stt' => 'res']));
+
+        $state = new QuantityState($space, [['fs', 10]]);
+        $result = (new MovementEngine())->execute($state, $space, 'reserve', 4);
+
+        $after = $result->applyTo($state);
+
+        self::assertNotSame($state, $after);
+        self::assertSame(10, $state->get('fs'));
+        self::assertSame(6, $after->get('fs'));
+        self::assertSame(4, $after->get('res'));
+
+        // Applying to the already-advanced state advances it again, so a result is a description
+        // of a movement rather than a snapshot of one outcome.
+        $twice = $result->applyTo($after);
+        self::assertSame(2, $twice->get('fs'));
+        self::assertSame(8, $twice->get('res'));
+    }
+
+    public function testWithDeltaIsTheImmutableSpellingOfAdd(): void
+    {
+        $space = SlotSpace::define(['stt' => ['fs']]);
+        $state = new QuantityState($space, [['fs', 3]]);
+
+        $updated = $state->withDelta($space->slot('fs'), -2);
+
+        self::assertNotSame($state, $updated);
+        self::assertSame(3, $state->get('fs'));
+        self::assertSame(1, $updated->get('fs'));
+    }
+
+    /**
+     * Quantities are int|float throughout, so completeness cannot be an identity test against
+     * int 0: a satisfied float movement leaves 0.0, and `0 === 0.0` is false.
+     */
+    public function testIsCompleteHoldsForAFullySatisfiedFloatMovement(): void
+    {
+        $space = SlotSpace::define(['stt' => ['fs', 'res']])
+            ->flow('reserve', static fn (Flow $flow) => $flow->move(['stt' => 'fs'], ['stt' => 'res']));
+
+        $result = (new MovementEngine())->execute(
+            new QuantityState($space, [['fs', 2.5]]),
+            $space,
+            'reserve',
+            2.5,
+        );
+
+        self::assertSame(0.0, (float) $result->remaining);
+        self::assertTrue($result->isComplete());
+    }
+
+    public function testDeltasPruneSlotsWhoseFloatMovementsNetToZero(): void
+    {
+        $space = SlotSpace::define(['stt' => ['a', 'b']])
+            ->flow('round', static fn (Flow $flow) => $flow
+                ->move(['stt' => 'a'], ['stt' => 'b'])
+                ->move(['stt' => 'b'], ['stt' => 'a']));
+
+        $result = (new MovementEngine())->execute(
+            new QuantityState($space, [['a', 2.5]]),
+            $space,
+            'round',
+            5.0,
+        );
+
+        // b receives 2.5 then gives it back, so it nets to zero and must not surface as a delta.
+        self::assertCount(2, $result->events);
+        self::assertSame([], array_map(static fn ($d): string => $d->slot->key, $result->deltas()));
+    }
+
+    /**
+     * A batch item knows its subject and its results are labelled with it, so the policies that
+     * decide its movement must see it too — otherwise a per-subject rule behaves as though no
+     * subject were set, and only in batch mode, which is the mode such a rule exists for.
+     */
+    public function testBatchExecutionPassesEachItemSubjectToPolicies(): void
+    {
+        $space = SlotSpace::define(['stt' => ['fs', 'res']]);
+
+        $collector = new class {
+            /** @var list<string> */
+            public array $seen = [];
+        };
+
+        $space->flow('reserve', static function (Flow $flow) use ($collector): void {
+            $flow->move(['stt' => 'fs'], ['stt' => 'res'])
+                ->constraint(static function (MovementEdge $edge, FlowContext $ctx) use ($collector): int | float {
+                    $collector->seen[] = is_string($ctx->subject) ? $ctx->subject : get_debug_type($ctx->subject);
+
+                    return \PHP_INT_MAX;
+                });
+        });
+
+        $batch = QuantityStateBatch::fromRows(
+            $space,
+            [['sku' => 'SKU-A', 'qty' => 5], ['sku' => 'SKU-B', 'qty' => 5]],
+            /** @param array{sku: string, qty: int} $row */
+            static fn (array $row): string => $row['sku'],
+            /** @param array{sku: string, qty: int} $row */
+            static fn (array $row): array => [['fs', $row['qty']]],
+            static fn (array $rows): int => 2,
+        );
+
+        (new BatchMovementEngine(new MovementEngine()))->execute($batch, $space, 'reserve');
+
+        self::assertSame(['SKU-A', 'SKU-B'], $collector->seen);
     }
 }

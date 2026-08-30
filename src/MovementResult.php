@@ -29,7 +29,9 @@ final class MovementResult
      */
     public function isComplete(): bool
     {
-        return 0 === $this->remaining;
+        // Quantities are int|float throughout, so the comparison has to be float-safe: a fully
+        // satisfied float movement leaves 0.0 remaining, which is not identical to int 0.
+        return 0.0 === (float) $this->remaining;
     }
 
     /**
@@ -72,7 +74,7 @@ final class MovementResult
         $deltas = [];
         foreach ($slotOrder as $slotKey) {
             $delta = $deltasBySlot[$slotKey];
-            if (0 === $delta->delta) {
+            if (0.0 === (float) $delta->delta) {
                 continue;
             }
 
@@ -90,6 +92,25 @@ final class MovementResult
     public function mutations(): array
     {
         return $this->deltas();
+    }
+
+    /**
+     * Return a copy of the given quantity state with this result's net deltas applied.
+     *
+     * Execution computes movement without touching the state it was handed, so applying a result
+     * is an explicit step the caller takes when it wants the resulting state rather than the
+     * ledger. The input is left untouched, which is what makes a result safe to hold, inspect,
+     * compare against alternatives, or discard.
+     */
+    public function applyTo(QuantityState $state): QuantityState
+    {
+        $updated = $state->copy();
+
+        foreach ($this->deltas() as $delta) {
+            $updated->add($delta->slot, $delta->delta);
+        }
+
+        return $updated;
     }
 
     /**

@@ -6,7 +6,40 @@ The format is based on Keep a Changelog, and this project uses Git tags for rele
 
 ## [Unreleased]
 
-- No changes yet.
+### Changed
+
+- **`MovementEngine::execute()` no longer modifies the quantity state it is given.** It works
+  against a private copy, so execution is a pure computation: a result can be held, compared, or
+  discarded without leaving the caller's state half-moved, and executing the same movement twice
+  against the same state now gives the same answer. Callers that relied on the state being advanced
+  in place should apply the result instead — `$after = $result->applyTo($before);`.
+- `SlotCodec::__construct()` no longer takes a `?TimeAxis`. The codec serializes dimension values;
+  time is a separate axis the timed layer expands along, never a slot dimension. **Breaking for any
+  class implementing `SlotCodec` directly.**
+
+### Added
+
+- `MovementResult::applyTo(QuantityState): QuantityState` — the state a movement produces, as a copy.
+- `QuantityState::withDelta(Slot, int|float): static` — the immutable spelling of `add()`.
+- `Time\TemporalContext` — one value carrying the time axis, duration resolver and dispatch calendar,
+  and the single home for normalizing raw callables into their interface wrappers. `SlotSpace` and
+  `TimedSlotSpace` previously each carried their own copy of that normalization.
+- `tests/BoundaryTest.php` enforces a one-way dependency from the timed/demand layer to the execution
+  core, so the unvalidated half cannot constrain the validated one.
+- `composer test:core` / `composer test:timed` run the two halves of the suite separately.
+
+### Fixed
+
+- `MovementResult::isComplete()` returned `false` for a fully satisfied movement of float quantities
+  (`0 === 0.0` is false). `MovementSchedule` and `MovementPlan` already handled this correctly.
+- `MovementResult::deltas()`, `MovementSchedule::deltas()` and `MovementPlan::deltas()` failed to
+  prune slots whose float movements net to zero, for the same reason.
+
+### Notes
+
+- The timed and demand-scheduling layer is now marked `@experimental`. It is tested and documented,
+  but no production consumer has yet exercised it, so its shape is expected to change once one does.
+  The execution engine is unaffected by that caveat.
 
 ## [0.2.1] - 2026-07-01
 

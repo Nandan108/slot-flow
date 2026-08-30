@@ -31,14 +31,35 @@ trait ResolvesFlowParameters
         }
 
         if (is_string($pattern)) {
-            return $this->resolvePatternValue($pattern, $params, null);
+            return $this->requireNonEmptyPatternValue($this->resolvePatternValue($pattern, $params, null), null);
         }
 
         $resolved = [];
         foreach ($pattern as $key => $value) {
             $resolved[$key] = is_string($value)
-                ? $this->resolvePatternValue($value, $params, $key)
+                ? $this->requireNonEmptyPatternValue($this->resolvePatternValue($value, $params, $key), $key)
                 : $value;
+        }
+
+        return $resolved;
+    }
+
+    /**
+     * Refuse a pattern value that resolved to the empty string.
+     *
+     * An empty value is not a wildcard: passed on it would match every value of the dimension and
+     * silently widen the movement, which is the opposite of what a caller supplying a parameter
+     * intends. Cheaper to refuse it here than to explain the resulting movement afterwards.
+     */
+    protected function requireNonEmptyPatternValue(string $resolved, int | string | null $dimension): string
+    {
+        if ('' === $resolved) {
+            throw new SlotFlowInvalidArgumentException(
+                null === $dimension
+                    ? 'Resolved slot pattern cannot be empty string.'
+                    : sprintf("Resolved slot pattern value for dimension '%s' cannot be empty string.", $dimension),
+                ['dimension' => $dimension],
+            );
         }
 
         return $resolved;
