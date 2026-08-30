@@ -6,10 +6,12 @@ namespace Tests;
 
 use Nandan108\SlotFlow\Batch\BatchMovementEngine;
 use Nandan108\SlotFlow\Batch\QuantityStateBatch;
+use Nandan108\SlotFlow\Contracts\QttyConstraintPolicyInterface;
 use Nandan108\SlotFlow\Exceptions\SlotFlowInvalidArgumentException;
 use Nandan108\SlotFlow\Flow;
 use Nandan108\SlotFlow\MovementEdge;
 use Nandan108\SlotFlow\MovementEngine;
+use Nandan108\SlotFlow\Policies\DimensionPriority;
 use Nandan108\SlotFlow\QuantityState;
 use Nandan108\SlotFlow\Runtime\AllocationDecision;
 use Nandan108\SlotFlow\Runtime\FlowContext;
@@ -419,5 +421,71 @@ final class MovementEngineTest extends TestCase
         (new BatchMovementEngine(new MovementEngine()))->execute($batch, $space, 'reserve');
 
         self::assertSame(['SKU-A', 'SKU-B'], $collector->seen);
+    }
+
+    /**
+     * A step can be configured two ways, and they used to fight: `policies()` rebuilt every typed
+     * bucket from its own bag, silently erasing whatever `orderBy()` had put there. The flow then
+     * ran with no ordering and simply produced a different movement — supplier stock consumed
+     * before warehouse stock, with nothing reported.
+     */
+    public function testPoliciesDoesNotDiscardPoliciesDeclaredThroughBuilderMethods(): void
+    {
+        $space = SlotSpace::define(['loc' => ['sup', 'wh1'], 'stt' => ['fs', 'res']])
+            ->flow('reserve', static fn (Flow $flow) => $flow
+                ->move(['stt' => 'fs'], ['stt' => 'res'])
+                ->orderBy(new DimensionPriority(['loc' => ['wh*', 'sup']]))
+                ->policies(new CapEachEdgeAtTwo()));
+
+        $step = $space->getFlow('reserve')->steps()[0];
+        self::assertCount(1, $step->orderingPolicies, 'orderBy() must survive a later policies() call');
+        self::assertCount(1, $step->quantityConstraintPolicies);
+
+        $result = (new MovementEngine())->execute(
+            new QuantityState($space, [['wh1.fs', 5], ['sup.fs', 10]]),
+            $space,
+            'reserve',
+            3,
+        );
+
+        // Warehouse before supplier: the declared ordering is still in force.
+        self::assertSame('wh1.fs', $result->events[0]->edge->from->key);
+        self::assertSame(2, $result->events[0]->quantity);
+        self::assertSame('sup.fs', $result->events[1]->edge->from->key);
+    }
+
+    /**
+     * Buckets are rebuilt from the policy bag on every `policies()` call, so a second call must
+     * re-derive the first call's entries rather than stack another copy on top of them.
+     *
+     * Adding the *same* unnamed policy twice does legitimately yield two entries — deduplication is
+     * what `NamedPolicy` is for — so this uses two distinct policies to isolate the question.
+     */
+    public function testRepeatedPoliciesCallsRederiveRatherThanDuplicate(): void
+    {
+        $first = new CapEachEdgeAtTwo();
+        $second = new CapEachEdgeAtTwo();
+
+        $space = SlotSpace::define(['stt' => ['fs', 'res']])
+            ->flow('reserve', static fn (Flow $flow) => $flow
+                ->move(['stt' => 'fs'], ['stt' => 'res'])
+                ->policies($first)
+                ->policies($second));
+
+        $step = $space->getFlow('reserve')->steps()[0];
+
+        self::assertSame([$first, $second], $step->quantityConstraintPolicies);
+    }
+}
+
+/**
+ * Caps every edge at two units, so a movement has to fall through to the next edge in order.
+ */
+final class CapEachEdgeAtTwo implements QttyConstraintPolicyInterface
+{
+    #[\Override]
+    public function constraint(MovementEdge $edge, FlowContext $ctx): int | float
+    {
+        return 2;
     }
 }

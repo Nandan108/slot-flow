@@ -89,19 +89,23 @@ final class PolicyBuckets
         /** @var list<PolicyInterface> $mergedPolicies */
         $mergedPolicies = array_values([...$step->policies, ...$policies]);
         $step->policies = $mergedPolicies;
-        $step->orderingPolicies = self::resolveCategory(
+        $step->orderingPolicies = self::mergeCategory(
+            $step->orderingPolicies,
             $step->policies,
             static fn (PolicyInterface $policy): bool => $policy instanceof EdgeOrderingPolicyInterface,
         );
-        $step->filterPolicies = self::resolveCategory(
+        $step->filterPolicies = self::mergeCategory(
+            $step->filterPolicies,
             $step->policies,
             static fn (PolicyInterface $policy): bool => $policy instanceof EdgeFilterPolicyInterface,
         );
-        $step->quantityConstraintPolicies = self::resolveCategory(
+        $step->quantityConstraintPolicies = self::mergeCategory(
+            $step->quantityConstraintPolicies,
             $step->policies,
             static fn (PolicyInterface $policy): bool => $policy instanceof QttyConstraintPolicyInterface,
         );
-        $step->allocationPolicies = self::resolveCategory(
+        $step->allocationPolicies = self::mergeCategory(
+            $step->allocationPolicies,
             $step->policies,
             static fn (PolicyInterface $policy): bool => $policy instanceof AllocationPolicyInterface,
         );
@@ -169,6 +173,48 @@ final class PolicyBuckets
         $policies = $attributes[self::SHIPMENT_SPLIT] ?? [];
 
         return $policies;
+    }
+
+    /**
+     * Rebuild one typed bucket from the step's policy bag without discarding what was declared
+     * through the dedicated builder methods.
+     *
+     * A step can be configured two ways: `orderBy()` / `filter()` / `constraint()` / `allocate()`
+     * write straight into a typed bucket, while `policies()` appends to the untyped bag the buckets
+     * are derived from. Recomputing a bucket purely from the bag therefore used to erase whatever
+     * the first route had put there — silently, so a flow that declared an ordering and then called
+     * `policies()` ran with no ordering at all and simply produced a different movement.
+     *
+     * Entries already derived from the bag are matched by identity and replaced, so calling
+     * `policies()` repeatedly re-derives rather than duplicates; anything else in the bucket came
+     * from a builder method and is kept.
+     *
+     * The two routes order their own kind differently, and that predates this method: `orderBy()`
+     * unshifts, so an earlier declaration wins, while `policies()` appends, so a later one wins.
+     * Keeping bucket-declared entries first preserves both conventions exactly as they were rather
+     * than quietly imposing one on the other.
+     *
+     * @template TBucketEntry
+     *
+     * @param list<TBucketEntry>                $bucket
+     * @param array<array-key, PolicyInterface> $policies
+     * @param \Closure(PolicyInterface): bool   $matches
+     *
+     * @return list<TBucketEntry>
+     */
+    private static function mergeCategory(array $bucket, array $policies, \Closure $matches): array
+    {
+        /** @psalm-var list<TBucketEntry> $derived */
+        $derived = self::resolveCategory($policies, $matches);
+
+        $direct = [];
+        foreach ($bucket as $entry) {
+            if (!in_array($entry, $derived, true)) {
+                $direct[] = $entry;
+            }
+        }
+
+        return [...$direct, ...$derived];
     }
 
     /**

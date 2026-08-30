@@ -30,6 +30,11 @@ The format is based on Keep a Changelog, and this project uses Git tags for rele
 
 ### Fixed
 
+- `FlowStepBuilder::policies()` silently discarded everything declared through `orderBy()`,
+  `filter()`, `constraint()` and `allocate()`: it rebuilt each typed bucket from its own policy bag,
+  erasing the entries the dedicated methods had written. A flow that declared an ordering and then
+  called `policies()` ran with no ordering at all and simply produced a different movement, with
+  nothing reported. Buckets are now merged rather than replaced.
 - `MovementResult::isComplete()` returned `false` for a fully satisfied movement of float quantities
   (`0 === 0.0` is false). `MovementSchedule` and `MovementPlan` already handled this correctly.
 - `MovementResult::deltas()`, `MovementSchedule::deltas()` and `MovementPlan::deltas()` failed to
