@@ -126,7 +126,11 @@ class QuantityState
     }
 
     /**
-     * Return all non-zero stored quantities keyed by slot key.
+     * Return every stored quantity keyed by slot key, including zeros.
+     *
+     * A slot that has been written and then emptied stays present with a zero, which is the point:
+     * "known to be zero" and "never seen" are different answers. Use {@see MovementResult::deltas()}
+     * where only the non-zero movement matters.
      *
      * @return array<non-empty-string, int|float>
      */

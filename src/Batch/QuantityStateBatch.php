@@ -33,6 +33,45 @@ class QuantityStateBatch
     }
 
     /**
+     * Build a batch from per-subject quantity states you already hold.
+     *
+     * The counterpart to {@see fromRows()}, for callers whose states did not come from rows —
+     * loaded from storage, carried over from a previous computation, or built by hand in a test.
+     * Without it the row shape is mandatory even when there are no rows.
+     *
+     * @param iterable<array{mixed, int|float, QuantityState}> $entries `[subject, quantity, state]`
+     *
+     * @psalm-template TEntrySubject
+     *
+     * @psalm-param iterable<array{TEntrySubject, int|float, QuantityState}> $entries
+     *
+     * @psalm-return self<TEntrySubject>
+     */
+    public static function of(iterable $entries): self
+    {
+        $items = [];
+        foreach ($entries as [$subject, $quantity, $state]) {
+            $items[] = new BatchItem(subject: $subject, quantity: $quantity, inventory: $state);
+        }
+
+        return new self($items);
+    }
+
+    /**
+     * Build a batch for one subject.
+     *
+     * @psalm-template TOneSubject
+     *
+     * @psalm-param TOneSubject $subject
+     *
+     * @psalm-return self<TOneSubject>
+     */
+    public static function one(mixed $subject, int | float $quantity, QuantityState $state): self
+    {
+        return self::of([[$subject, $quantity, $state]]);
+    }
+
+    /**
      * Creates a QuantityStateBatch from an iterable of rows, using the provided closures to extract the necessary information.
      *
      * @psalm-template TRow

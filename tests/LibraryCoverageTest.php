@@ -597,7 +597,7 @@ final class LibraryCoverageTest extends TestCase
         (new BatchMovementEngine(new MovementEngine()))->execute(
             batch: $batch,
             space: $space,
-            cascade: $cascade,
+            flow: $cascade,
         );
 
         $result = $batch->items()[0]->movementResult();
@@ -949,7 +949,7 @@ final class LibraryCoverageTest extends TestCase
         $result = (new MovementEngine())->execute(
             inventory: $inventory,
             space: $space,
-            cascade: $cascade,
+            flow: $cascade,
             quantity: 2,
             params: ['loc' => 'a'],
         );
@@ -1022,7 +1022,7 @@ final class LibraryCoverageTest extends TestCase
             'loc'   => ['foo', 'bar'],
             'stt'   => ['fs', 'sd'],
         ])->edgeRules([
-            EdgeRule::allowLabeled(null, 'foo.fs', 'bar.sd'),
+            EdgeRule::allow('foo.fs', 'bar.sd'),
         ]);
         $first = $cachedEdgesSpace->getEdgesFrom($cachedEdgesSpace->slot('foo.fs'));
         $second = $cachedEdgesSpace->getEdgesFrom($cachedEdgesSpace->slot('foo.fs'));
@@ -1040,7 +1040,7 @@ final class LibraryCoverageTest extends TestCase
         $result = (new MovementEngine())->execute(
             inventory: $state,
             space: $space,
-            cascade: 'transfer',
+            flow: 'transfer',
             quantity: 2,
         );
 
@@ -1177,7 +1177,7 @@ final class LibraryCoverageTest extends TestCase
         }
 
         $event = new MovementEvent(new MovementEdge($space->slot('src.fs'), $space->slot('dest.sd')), 1, 2, 3);
-        self::assertCount(2, $event->mutations());
+        self::assertCount(2, $event->deltas());
 
         try {
             /** @psalm-suppress InvalidArgument */
@@ -1231,7 +1231,7 @@ final class LibraryCoverageTest extends TestCase
         $result = (new MovementEngine())->execute(
             inventory: $state,
             space: $space,
-            cascade: $slotFlow,
+            flow: $slotFlow,
             quantity: 1,
             params: ['dest' => 'dest', '' => 'ignored', 0 => 'ignored', 'nullish' => null],
         );
@@ -1242,7 +1242,7 @@ final class LibraryCoverageTest extends TestCase
             (new MovementEngine())->execute(
                 inventory: new QuantityState($space, [['src.fs', 1]]),
                 space: $space,
-                cascade: Flow::define('bad-array-pattern', static fn (Flow $flow) => $flow->move(['loc' => '{slot}', 'stt' => 'fs'], 'dest.sd')),
+                flow: Flow::define('bad-array-pattern', static fn (Flow $flow) => $flow->move(['loc' => '{slot}', 'stt' => 'fs'], 'dest.sd')),
                 quantity: 1,
                 params: ['slot' => ''],
             );

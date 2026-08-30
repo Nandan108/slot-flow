@@ -155,8 +155,6 @@ This distinction matters in generic modeling:
 - slot metadata is structural and shared
 - state-side attributes are dynamic and item-specific
 
-`Inventory` remains available as a deprecated compatibility alias for `QuantityState`.
-
 ## 4. Define Flows
 
 A flow is a sequence of movement steps. Each step can define:
@@ -225,7 +223,7 @@ Placeholders are substituted when the flow runs, from `MovementEngine::execute(.
 One definition therefore serves every value of a dimension. That matters most for two shapes a compile-time pattern cannot express at all:
 
 - **A move whose two endpoints are both runtime values** — a transfer or putaway, where `from` and `to` are different values of the *same* dimension. Scoping the execution to one value cannot say this; two parameters can.
-- **A cascade that is fixed in shape but not in place** — "fill commitments first, then availability, in whichever warehouse this receipt landed in" is one flow, not one flow per warehouse.
+- **A flow that is fixed in shape but not in place** — "fill commitments first, then availability, in whichever warehouse this receipt landed in" is one flow, not one flow per warehouse.
 
 So reach for a parameter before reaching for a factory that builds a `Flow` per call: a parameterized flow can be registered on the space, resolved by name, and serialized, and a built one cannot.
 
@@ -243,8 +241,6 @@ Execution accepts either:
 - a `Flow` object that you built inline or fetched from the space
 - a string flow name that resolves against the provided `SlotSpace`
 
-For backward compatibility, the named argument on `MovementEngine::execute()` is still called `cascade`.
-
 Examples:
 
 ```php
@@ -254,7 +250,7 @@ $reserve = Flow::define('reserve', static fn (Flow $c) => $c
 (new MovementEngine())->execute(
     inventory: $inventory,
     space: $space,
-    cascade: $reserve,
+    flow: $reserve,
     quantity: 3,
 );
 
@@ -264,7 +260,7 @@ $space->flow('reserve', static fn (Flow $c) => $c
 (new MovementEngine())->execute(
     inventory: $inventory,
     space: $space,
-    cascade: 'reserve',
+    flow: 'reserve',
     quantity: 3,
 );
 ```
@@ -292,7 +288,7 @@ use Nandan108\SlotFlow\MovementEngine;
 $result = (new MovementEngine())->execute(
     inventory: $inventory,
     space: $space,
-    cascade: $reserve,
+    flow: $reserve,
     quantity: 3,
     subject: 'SKU-123',
     appContext: ['channel' => 'web'],
@@ -316,7 +312,7 @@ When using parameterized flows, `params` is also where placeholder substitution 
 - names may contain letters, digits, `_`, and `-`
 - missing params are not substituted, so execution should treat them as a modeling error
 
-This same `params` mechanism works when the `cascade` argument receives a registered flow name, which makes named parameterized flows a good fit for application-level flow templates.
+This same `params` mechanism works when the `flow` argument receives a registered flow name, which makes named parameterized flows a good fit for application-level flow templates.
 
 ### Exceptions
 
@@ -344,7 +340,7 @@ $batch = QuantityStateBatch::fromRows(
 $batch = (new BatchMovementEngine(new MovementEngine()))->execute(
     batch: $batch,
     space: $space,
-    cascade: $reserve,
+    flow: $reserve,
 );
 ```
 

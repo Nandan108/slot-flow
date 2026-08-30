@@ -72,16 +72,6 @@ final class MovementEvent
     }
 
     /**
-     * @deprecated use deltas() instead
-     *
-     * @return list<QuantityStateDelta>
-     */
-    public function mutations(): array
-    {
-        return $this->deltas();
-    }
-
-    /**
      * Convert this event to a ledger entry.
      *
      * @param array<string, mixed> $context

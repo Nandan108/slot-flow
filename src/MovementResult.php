@@ -85,16 +85,6 @@ final class MovementResult
     }
 
     /**
-     * @deprecated use deltas() instead
-     *
-     * @return list<QuantityStateDelta>
-     */
-    public function mutations(): array
-    {
-        return $this->deltas();
-    }
-
-    /**
      * Return a copy of the given quantity state with this result's net deltas applied.
      *
      * Execution computes movement without touching the state it was handed, so applying a result

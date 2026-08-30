@@ -39,14 +39,14 @@ final class MovementEngine
     public function execute(
         QuantityState $inventory,
         SlotSpace $space,
-        string | Flow $cascade,
+        string | Flow $flow,
         int | float $quantity,
         mixed $subject = null,
         array $appContext = [],
         array $params = [],
     ): MovementResult {
-        if (is_string($cascade)) {
-            $cascade = $space->getFlow($cascade);
+        if (is_string($flow)) {
+            $flow = $space->getFlow($flow);
         }
 
         // The solver advances a state as it consumes edges, so it needs a mutable working copy.
@@ -54,6 +54,6 @@ final class MovementEngine
         // caller goes through, instead of depending on which solver is wired in.
         $workingState = $inventory->copy();
 
-        return $this->solver->execute($workingState, $space, $cascade, $quantity, $subject, $appContext, $params);
+        return $this->solver->execute($workingState, $space, $flow, $quantity, $subject, $appContext, $params);
     }
 }

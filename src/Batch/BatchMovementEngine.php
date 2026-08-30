@@ -30,7 +30,7 @@ final class BatchMovementEngine
      *
      * @param QuantityStateBatch         $batch   the batch of quantity-state items to move
      * @param SlotSpace                  $space   the slot space used to resolve flow steps
-     * @param string|Flow                $cascade the flow containing the movement rules
+     * @param string|Flow                $flow    the flow containing the movement rules
      * @param array<mixed>               $context execution context forwarded to the movement engine
      * @param array<string, scalar|null> $params  flow parameter substitutions forwarded to the movement engine
      *
@@ -43,7 +43,7 @@ final class BatchMovementEngine
     public function execute(
         QuantityStateBatch $batch,
         SlotSpace $space,
-        string | Flow $cascade,
+        string | Flow $flow,
         array $context = [],
         array $params = [],
     ): QuantityStateBatch {
@@ -52,7 +52,7 @@ final class BatchMovementEngine
                 $this->engine->execute(
                     $item->inventory,
                     $space,
-                    $cascade,
+                    $flow,
                     $item->quantity,
                     // The batch knows which subject each item belongs to and labels its results
                     // with it, so the policies deciding that item's movement must see it too.

@@ -12,15 +12,6 @@
         same — then ~110 call sites threaded through, all inside the timed suite. Deferred because
         that cost falls entirely on the unvalidated layer. Subclassing is *not* the cheap route: it
         means un-finalizing `SlotSpace`, trading an import coupling for an inheritance one.
-- [021] Small fixes, none urgent, all verified present:
-        `EdgeRule::deny()` / `allowLabeled()` declare an optional `$label` before required `$from`,
-        which emits a PHP deprecation at class load (CI runs 8.1–8.5, and `failOnDeprecation` is on
-        — it currently slips through only because it fires during autoload);
-        `QuantityState::all()` is documented "non-zero" but returns every entry;
-        `DefaultSlotKeyCodec::matchDimensionValues()` caches alternation patterns under a key it
-        never reads back, so those entries only grow;
-        `src/Operations`, `src/Planners` and `src/Constraints` are empty directories.
-
 # DONE
 - [005] Fix all psalm errors before anything else!
 - [006] Add docs describing all features
@@ -40,6 +31,12 @@
         override — `Flow` has no solver property and `execute()` has no solver argument. Reopen as
         a TODO if either is still wanted.)*
 - [017] Implement EarliestArrivalSolver
+- [021] Small fixes: EdgeRule optional-before-required deprecation, QuantityState::all() docblock,
+        codec alternation-cache never read back, three empty directories.
+- [022] Drop the deprecated compatibility surface (Cascade/Inventory aliases, mutations(), the
+        second `$cascades` registry) and rename the `$cascade` parameter to `$flow`. Cheap only
+        during a breaking release, and InvFlux used none of it.
+- [023] `QuantityStateBatch::of()` / `::one()` — build a batch from states you already hold.
 - [018] Decide what `edgeRules()` means, and make one edge graph authoritative. Settled as an
         opt-in base (`EdgeRuleBase::All|None`), mirroring `SlotRuleBase`: enforcement is stated, not
         inferred from the presence of rules. Always-enforce was not viable — `getEdgesFrom()` is

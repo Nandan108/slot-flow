@@ -43,7 +43,6 @@ At its core, SlotFlow acts as a declarative inventory-movement engine over a con
 
 - Flows can be instantiated independently, but are typically registered on a `SlotSpace` and referenced by name during execution.
 - Flows can be reversed with `reverseIf()` and parameterized, allowing a single definition to adapt to different execution contexts.
-- `Cascade` and `Inventory` remain available as deprecated compatibility aliases for `Flow` and `QuantityState`.
 
 ## When SlotFlow shines
 
@@ -101,15 +100,13 @@ $inventory = new QuantityState($space, [
 $result = (new MovementEngine())->execute(
     inventory: $inventory,
     space: $space,
-    cascade: 'reserve',
+    flow: 'reserve',
     quantity: 6,
     subject: 'SKU-123',
 );
 ```
 
 `MovementEngine::execute()` accepts either a `Flow` object or the name of a flow registered on the provided `SlotSpace`. Named execution is often the cleaner option once your flows are part of the modeled space.
-
-For backward compatibility, the named argument on `MovementEngine::execute()` is still called `cascade`.
 
 ### How the flow behaves
 
@@ -245,13 +242,6 @@ Current core terminology:
 - `QuantityState`: quantity distribution for one subject
 - `QuantityStateBatch`: grouped quantity states for batch execution
 - `QuantityStateDelta`: one net per-slot quantity delta
-
-Deprecated compatibility aliases:
-
-- `Cascade` -> `Flow`
-- `Inventory` -> `QuantityState`
-- `InventoryBatch` -> `QuantityStateBatch`
-- `InventoryMutation` -> `QuantityStateDelta`
 
 ## Guide
 

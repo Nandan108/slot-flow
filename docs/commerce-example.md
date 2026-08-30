@@ -56,7 +56,7 @@ The current example documents these flows:
 
 ### Receive Purchase Order
 
-Cascade: `receive-po`
+Flow: `receive-po`
 
 - move `sup.{own}.{from-state}` to `{loc}.{own}.{from-state}`
 - if requested quantity exceeds available supplier quantity, create the overflow in `{loc}.{own}.fs`
@@ -65,7 +65,7 @@ This is used to model reception and reception reversal with `reverseIf(...)`.
 
 ### Reserve
 
-Cascade: `reserve`
+Flow: `reserve`
 
 - move `*.fs` to `*.res`
 - prefer warehouse stock before supplier stock
@@ -75,7 +75,7 @@ This is intentionally modeled as a late-stage hold, right before payment gateway
 
 ### Release
 
-Cascade: `release`
+Flow: `release`
 
 - move `*.res` back to `*.fs`
 
@@ -83,7 +83,7 @@ This models reservation timeout or payment failure.
 
 ### Book
 
-Cascade: `book`
+Flow: `book`
 
 - move `*.res` to `*.sd`
 
@@ -91,11 +91,11 @@ This models the conversion of a confirmed reservation into sold stock.
 
 ### Discard Defective
 
-Cascade: `discard`
+Flow: `discard`
 
 - destroy `*.def`
 
-This uses the `nil` sink through `Cascade::destroy(...)`.
+This uses the `nil` sink through `Flow::destroy(...)`.
 
 ## Intentionally Omitted For Now
 
@@ -156,7 +156,7 @@ The commerce fixture is just one translation layer over the generic engine:
 
 - `variant` maps to core `subject`
 - row ingestion maps database-ish rows into `QuantityStateBatch`
-- named commerce flows map to `Cascade` definitions
+- named commerce flows map to `Flow` definitions
 
 If you understand this fixture, you understand the intended way to embed SlotFlow into an application.
 

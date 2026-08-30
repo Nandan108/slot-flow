@@ -47,7 +47,7 @@ final class EdgeRule
      * @psalm-param TSlotPattern $from
      * @psalm-param TSlotPattern $to
      */
-    public static function allowLabeled(?string $label = null, string | array | null $from, string | array | null $to = null, array $meta = []): self
+    public static function allowLabeled(string $label, string | array | null $from, string | array | null $to = null, array $meta = []): self
     {
         return new self(true, $from, $to, $label, $meta);
     }
@@ -75,7 +75,7 @@ final class EdgeRule
      * @psalm-param TSlotPattern $from
      * @psalm-param TSlotPattern $to
      */
-    public static function deny(?string $label = null, string | array | null $from, string | array | null $to = null, array $meta = []): self
+    public static function deny(string | array | null $from, string | array | null $to = null, ?string $label = null, array $meta = []): self
     {
         return new self(false, $from, $to, $label, $meta);
     }
@@ -147,8 +147,8 @@ final class EdgeRule
     public static function disconnect(string | array | null $patternA, string | array | null $patternB = null, array $meta = []): RuleSet
     {
         return new RuleSet([
-            self::deny(null, $patternA, $patternB, $meta),
-            self::deny(null, $patternB, $patternA, $meta),
+            self::deny($patternA, $patternB, meta: $meta),
+            self::deny($patternB, $patternA, meta: $meta),
         ]);
     }
 }

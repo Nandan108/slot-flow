@@ -476,6 +476,46 @@ final class MovementEngineTest extends TestCase
 
         self::assertSame([$first, $second], $step->quantityConstraintPolicies);
     }
+
+    /**
+     * `fromRows()` used to be the only way in, so a caller holding states already — loaded from
+     * storage, or carried over from a previous computation — had to invent a row shape to get past
+     * a constructor typed on an @internal class.
+     */
+    public function testABatchCanBeBuiltFromQuantityStatesDirectly(): void
+    {
+        $space = SlotSpace::define(['stt' => ['fs', 'res']])
+            ->flow('reserve', static fn (Flow $flow) => $flow->move(['stt' => 'fs'], ['stt' => 'res']));
+
+        $batch = QuantityStateBatch::of([
+            ['SKU-A', 2, new QuantityState($space, [['fs', 5]])],
+            ['SKU-B', 3, new QuantityState($space, [['fs', 1]])],
+        ]);
+
+        (new BatchMovementEngine(new MovementEngine()))->execute($batch, $space, 'reserve');
+
+        $results = $batch->results();
+        self::assertCount(2, $results);
+        self::assertSame('SKU-A', $results[0]['subject']);
+        self::assertSame(0, $results[0]['result']?->remaining);
+        // SKU-B wants 3 but holds 1, so 2 stay unsatisfied.
+        self::assertSame(2, $results[1]['result']?->remaining);
+
+        $deltas = $batch->deltas();
+        self::assertSame(['SKU-A', 'SKU-A', 'SKU-B', 'SKU-B'], array_map(static fn ($d) => $d->subject, $deltas));
+    }
+
+    public function testASingleSubjectBatchIsOneCall(): void
+    {
+        $space = SlotSpace::define(['stt' => ['fs', 'res']])
+            ->flow('reserve', static fn (Flow $flow) => $flow->move(['stt' => 'fs'], ['stt' => 'res']));
+
+        $batch = QuantityStateBatch::one('SKU-A', 2, new QuantityState($space, [['fs', 5]]));
+        (new BatchMovementEngine(new MovementEngine()))->execute($batch, $space, 'reserve');
+
+        self::assertCount(1, $batch->items());
+        self::assertSame(0, $batch->results()[0]['result']?->remaining);
+    }
 }
 
 /**

@@ -210,7 +210,7 @@ final class CommerceFlowExample
             ->execute(
                 batch: $this->prepareBatch($rows),
                 space: $this->space,
-                cascade: $flow,
+                flow: $flow,
                 context: $context,
                 params: $params,
             )

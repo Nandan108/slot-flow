@@ -37,7 +37,7 @@ use Nandan108\SlotFlow\Time\TimedDurationResolverInterface;
  *  - an tuple: array value pattern in the exact order and number of dimensions defined in the slot space, where each value can be a specific value or a wildcard (null or wildcard string as defined by codec)
  *  - an array of dimension name to value patterns where missing or null values are treated as wildcards
  *  - null, to match the nil slot (for source/sink slots in edges)
- * @psalm-type TEdgePattern array{from: TSlotPattern, to: TSlotPattern}|array{TSlotPattern, TSlotPattern} a pattern to define an edge between slots, consisting of a from pattern and a to pattern. Can be used in cascade step definitions.
+ * @psalm-type TEdgePattern array{from: TSlotPattern, to: TSlotPattern}|array{TSlotPattern, TSlotPattern} a pattern to define an edge between slots, consisting of a from pattern and a to pattern. Can be used in flow step definitions.
  *
  * @api
  */
@@ -82,9 +82,6 @@ final class SlotSpace
 
     /** @var array<non-empty-string, Flow> */
     public array $flows = [];
-
-    /** @var array<non-empty-string, Flow> */
-    public array $cascades = [];
 
     /**
      * Per slot key => the list of rules needed to generate the valid edges from that slot to other slots.
@@ -871,45 +868,6 @@ final class SlotSpace
     }
 
     /**
-     * Register a named cascade definition.
-     *
-     * @deprecated use flow() instead
-     *
-     * @psalm-suppress DeprecatedClass
-     *
-     * @param non-empty-string $name
-     * @param \Closure(Cascade):mixed|list<array{
-     *     0?: array<int|string, string|null>|string|null,
-     *     1?: array<int|string, string|null>|string|null,
-     *     from?: array<int|string, string|null>|string|null,
-     *     to?: array<int|string, string|null>|string|null
-     * }> $builder
-     *
-     * @psalm-param \Closure(Cascade):mixed|list<TEdgePattern> $builder
-     */
-    public function cascade(string $name, \Closure | array $builder): self
-    {
-        /** @psalm-suppress DeprecatedClass */
-        isset($this->flows[$name]) && throw new SlotFlowInvalidArgumentException(
-            "Cascade '$name' already defined",
-            ['cascade' => $name],
-        );
-
-        if (is_array($builder)) {
-            $this->flow($name, $builder);
-            /** @psalm-suppress DeprecatedClass, NoValue */
-            $this->cascades[$name] = Cascade::fromFlow($this->flows[$name]);
-
-            return $this;
-        }
-
-        $this->flows[$name] = Cascade::define($name, $builder);
-        $this->cascades[$name] = $this->flows[$name];
-
-        return $this;
-    }
-
-    /**
      * Register a named flow definition.
      *
      * @param non-empty-string $name
@@ -946,13 +904,11 @@ final class SlotSpace
                 },
             );
             $this->flows[$name] = $flow;
-            $this->cascades[$name] = $flow;
 
             return $this;
         }
 
         $this->flows[$name] = Flow::define($name, $builder);
-        $this->cascades[$name] = $this->flows[$name];
 
         return $this;
     }
@@ -967,29 +923,6 @@ final class SlotSpace
         }
 
         return $this->flows[$name];
-    }
-
-    /**
-     * @deprecated use getFlow() instead
-     *
-     * @psalm-suppress DeprecatedClass
-     */
-    public function getCascade(string $name): Cascade
-    {
-        /** @psalm-suppress DeprecatedClass */
-        if (!isset($this->flows[$name])) {
-            throw new SlotFlowInvalidArgumentException(
-                "Cascade '$name' not defined",
-                ['cascade' => $name],
-            );
-        }
-
-        $flow = $this->flows[$name];
-
-        /** @psalm-suppress DeprecatedClass */
-        return $flow instanceof Cascade
-            ? $flow
-            : Cascade::fromFlow($flow);
     }
 
     private function defaultSubjectKey(mixed $subject): string

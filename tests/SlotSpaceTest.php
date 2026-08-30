@@ -208,7 +208,7 @@ final class SlotSpaceTest extends TestCase
             'stt'   => ['fs', 'sd', 'ret'],
         ])->edgeRules([
             EdgeRule::allowLabeled('advance', 'foo.fs', 'foo.sd|ret'),
-            EdgeRule::deny(null, 'foo.fs', 'foo.ret'),
+            EdgeRule::deny('foo.fs', 'foo.ret'),
         ]);
 
         self::assertSame(

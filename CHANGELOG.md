@@ -6,8 +6,22 @@ The format is based on Keep a Changelog, and this project uses Git tags for rele
 
 ## [Unreleased]
 
+### Removed
+
+- **The entire deprecated compatibility surface.** `Cascade`, `Inventory`, `InventoryBatch`,
+  `BatchInventoryMutation`, `InventoryMutation`, `CascadeContext` and `AvailableInventorySortPolicy`
+  are gone, along with `MovementResult::mutations()`, `MovementEvent::mutations()`,
+  `SlotSpace::cascade()` and `SlotSpace::getCascade()`. `SlotSpace::$cascades` went with them — it
+  was a second registry hand-synchronised with `$flows` and holding the same objects.
+- The `$cascade` parameter of `MovementEngine::execute()` and `BatchMovementEngine::execute()` is
+  now `$flow`. **Breaking for named-argument callers.**
+
 ### Changed
 
+- `EdgeRule::allowLabeled()` now requires its `$label`, and `EdgeRule::deny()` takes
+  `($from, $to, $label, $meta)` to match `allow()`. Both previously declared an optional parameter
+  before a required one, which PHP reports as a deprecation at class load — under CI's 8.1–8.5
+  matrix and `failOnDeprecation`, on borrowed time.
 - **`MovementEngine::execute()` no longer modifies the quantity state it is given.** It works
   against a private copy, so execution is a pure computation: a result can be held, compared, or
   discarded without leaving the caller's state half-moved, and executing the same movement twice
@@ -36,6 +50,9 @@ The format is based on Keep a Changelog, and this project uses Git tags for rele
 - `tests/BoundaryTest.php` enforces a one-way dependency from the timed/demand layer to the execution
   core, so the unvalidated half cannot constrain the validated one.
 - `composer test:core` / `composer test:timed` run the two halves of the suite separately.
+- `QuantityStateBatch::of()` and `::one()` build a batch from quantity states you already hold.
+  `fromRows()` was the only public way in, so a caller whose states did not come from rows had to
+  invent a row shape to get past a constructor typed on an `@internal` class.
 
 ### Fixed
 
@@ -48,6 +65,11 @@ The format is based on Keep a Changelog, and this project uses Git tags for rele
   (`0 === 0.0` is false). `MovementSchedule` and `MovementPlan` already handled this correctly.
 - `MovementResult::deltas()`, `MovementSchedule::deltas()` and `MovementPlan::deltas()` failed to
   prune slots whose float movements net to zero, for the same reason.
+- `QuantityState::all()` was documented as returning non-zero quantities but returns every entry.
+  The documentation was wrong, not the behaviour: "known to be zero" and "never seen" are different
+  answers and the method is right to keep both.
+- `DefaultSlotKeyCodec::matchDimensionValues()` cached alternation patterns under a key it never
+  read back, so those entries only accumulated.
 
 ### Notes
 

@@ -234,6 +234,14 @@ class DefaultSlotKeyCodec implements SlotCodec
 
         $values = $this->space->dimensionValues($dimension);
 
+        // The write at the end of this method keys the whole pattern, while the read inside the
+        // loop keys one alternative. Without this the two never meet for an alternation like
+        // 'a|b*', so its entry accumulated and was never used again.
+        $cached = $this->dimensionExpansions[$dimension][$pattern] ?? null;
+        if (null !== $cached) {
+            return $cached;
+        }
+
         $allMatches = [];
 
         foreach (explode(self::ALTERNATIVE, $pattern) as $subPattern) {
