@@ -2,8 +2,6 @@
 
 # TODO
 - [013] Add non-greedy engine strategy and new fixture and example for shortest path (Dijkstra)
-- [014] Add `$result->trace()` to return a decision trace demonstrating how result was produced.
-        E.g. `[['step' => 1,'candidates' => [...],'afterFilters' => [...],'afterOrdering' => [...],'selected' => [...],'appliedQuantity' => ...], ['step' => 2, ...]]`
 - [019] Extract an `EdgeGraph` owning topology, now that [018] has settled the semantics.
 - [020] Finish the temporal severance: remove `SlotSpace::defineTimed()` and `$space->timeAxis` so
         `SlotSpace.php` comes off the `tests/BoundaryTest.php` allow-list. Needs `ScheduleRequest` to
@@ -37,6 +35,10 @@
         second `$cascades` registry) and rename the `$cascade` parameter to `$flow`. Cheap only
         during a breaking release, and InvFlux used none of it.
 - [023] `QuantityStateBatch::of()` / `::one()` — build a batch from states you already hold.
+- [014] `$result->trace()` — opt-in per-step decision record on MovementResult, collected by
+        GreedyFlowSolver(trace: true). Per edge it reports available/movable/moved, which separates
+        an empty source from a constraint that capped it from a request already satisfied.
+        Execution only; the planning results have their own shapes.
 - [018] Decide what `edgeRules()` means, and make one edge graph authoritative. Settled as an
         opt-in base (`EdgeRuleBase::All|None`), mirroring `SlotRuleBase`: enforcement is stated, not
         inferred from the presence of rules. Always-enforce was not viable — `getEdgesFrom()` is

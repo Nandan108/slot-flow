@@ -50,6 +50,11 @@ The format is based on Keep a Changelog, and this project uses Git tags for rele
 - `tests/BoundaryTest.php` enforces a one-way dependency from the timed/demand layer to the execution
   core, so the unvalidated half cannot constrain the validated one.
 - `composer test:core` / `composer test:timed` run the two halves of the suite separately.
+- `MovementResult::trace()` — an opt-in per-step decision record
+  (`new MovementEngine(new GreedyFlowSolver(trace: true))`). Each step records its candidate edges,
+  what the filters and ordering did to them, and per edge the three quantities that separate the
+  usual causes of a movement that did not happen: `available`, `movable` and `moved`. Every defect
+  fixed in this release was a silent one, and this is the diagnostic that makes that class visible.
 - `QuantityStateBatch::of()` and `::one()` build a batch from quantity states you already hold.
   `fromRows()` was the only public way in, so a caller whose states did not come from rows had to
   invent a row shape to get past a constructor typed on an `@internal` class.

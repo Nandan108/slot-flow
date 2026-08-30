@@ -229,10 +229,48 @@ The main result shapes are:
 
 - `MovementResult::deltas()` for net per-slot current-state deltas
 - `MovementResult::applyTo($state)` for the resulting state, as a copy
+- `MovementResult::trace()` for a per-step decision record — see [Why did it move that?](#why-did-it-move-that)
 - `MovementResult::ledgerEntries($context)` for append-only movement records
 - `MovementSchedule::$steps`, `MovementSchedule::$milestones`, and `MovementSchedule::deltas()` for time-based planning output
 - `DemandSchedule::$lines` and `DemandSchedule::$shipments` for multi-line order promise output
 - `QuantityStateBatch::deltas()` and `QuantityStateBatch::ledgerEntries($context)` for the same outputs across many subjects
+
+## Why did it move that?
+
+More often the question is why it moved *nothing*. Ask the solver for a decision trace:
+
+```php
+$engine = new MovementEngine(new GreedyFlowSolver(trace: true));
+$result = $engine->execute($state, $space, 'reserve', 6);
+
+foreach ($result->trace() as $step) {
+    foreach ($step['edges'] as $edge) {
+        printf(
+            "%s  available=%s movable=%s moved=%s\n",
+            $edge['edge'], $edge['available'], $edge['movable'], $edge['moved'],
+        );
+    }
+}
+```
+
+```
+(wh1.fs) -> (wh1.res)  available=2 movable=2 moved=2
+(sup.fs) -> (sup.res)  available=4 movable=0 moved=0
+```
+
+The three quantities are what make this diagnostic rather than decorative, because each drop to zero
+has a different cause:
+
+- **`available` is 0** — the source slot was empty.
+- **`available` above 0, `movable` 0** — a quantity constraint capped the edge, as above.
+- **`movable` above 0, `moved` 0** — the requested quantity was already satisfied upstream.
+
+Each step also records its `candidates`, and what the filter and ordering policies did to them
+(`afterFilters`, `afterOrdering`) — so a declared ordering is visible as an ordering, not only in its
+effect. An empty `candidates` means no edge matched the step at all, which under
+`EdgeRuleBase::None` is how a refused topology reads.
+
+Tracing is off by default: it costs memory per step and most executions never look at one.
 
 ## Terminology
 

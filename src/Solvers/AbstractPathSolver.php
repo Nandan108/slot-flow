@@ -208,9 +208,7 @@ abstract class AbstractPathSolver
         array $context,
         mixed $subject = null,
     ): int | float {
-        $available = $edge->from->isNil()
-            ? $requested
-            : min($requested, $inventory->get($edge->from));
+        $available = $this->availableOn($inventory, $edge, $requested);
 
         $limit = $available;
         $stepContext = new FlowContext($inventory->space(), [$edge], $inventory, $quantity, $subject, $context);
@@ -232,6 +230,20 @@ abstract class AbstractPathSolver
         }
 
         return max(0, $limit);
+    }
+
+    /**
+     * How much this edge could supply before any quantity constraint is consulted.
+     *
+     * Split out from {@see limitMovable()} so a trace can report availability and the post-constraint
+     * limit separately: together they say whether an edge moved nothing because the source was empty
+     * or because a policy capped it, which are different problems.
+     */
+    protected function availableOn(QuantityState $inventory, MovementEdge $edge, int | float $requested): int | float
+    {
+        return $edge->from->isNil()
+            ? $requested
+            : min($requested, $inventory->get($edge->from));
     }
 
     protected function applyMovement(QuantityState $inventory, MovementEdge $edge, int | float $quantity): QuantityState

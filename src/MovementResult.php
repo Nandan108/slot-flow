@@ -9,7 +9,12 @@ use Nandan108\SlotFlow\Results\MovementEvent;
 use Nandan108\SlotFlow\Results\QuantityStateDelta;
 
 /**
- * Immutable summary of one cascade execution.
+ * Immutable summary of one flow execution.
+ *
+ * @psalm-import-type TSlotPattern from SlotSpace
+ *
+ * @psalm-type TTraceEdge = array{edge: string, label: ?string, available: int|float, movable: int|float, moved: int|float, allocated?: int|float}
+ * @psalm-type TTraceStep = array{step: int, from: TSlotPattern, to: TSlotPattern, edgeLabels: ?list<non-empty-string>, candidates: list<string>, afterFilters: list<string>, afterOrdering: list<string>, byAllocation: bool, edges: list<TTraceEdge>, remainingBefore: int|float, remainingAfter: int|float, applied: int|float}
  *
  * @api
  */
@@ -17,11 +22,38 @@ final class MovementResult
 {
     /**
      * @param list<MovementEvent> $events
+     * @param ?list<array<mixed>> $trace  per-step decision record, when the solver was asked for one
+     *
+     * @psalm-param ?list<TTraceStep> $trace
      */
     public function __construct(
         public readonly array $events,
         public readonly int | float $remaining,
+        private readonly ?array $trace = null,
     ) {
+    }
+
+    /**
+     * Return the per-step decision trace, or null when the solver was not collecting one.
+     *
+     * Answers "why did it move *that*" — and, more often, "why did it move nothing". Each step
+     * records its candidate edges, what the filters and ordering did to them, and per edge the
+     * three numbers that separate the usual causes: `available` (what the source held),
+     * `movable` (what survived the quantity constraints) and `moved` (what the remaining quantity
+     * actually took). Zero available means an empty source; available above zero with movable at
+     * zero means a policy capped it; movable above zero with moved at zero means the request was
+     * already satisfied.
+     *
+     * Collection is opt-in, since a trace costs memory per step and most executions never look at
+     * one: `new MovementEngine(new GreedyFlowSolver(trace: true))`.
+     *
+     * @return ?list<array<mixed>>
+     *
+     * @psalm-return ?list<TTraceStep>
+     */
+    public function trace(): ?array
+    {
+        return $this->trace;
     }
 
     /**
