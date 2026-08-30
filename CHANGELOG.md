@@ -6,6 +6,10 @@ The format is based on Keep a Changelog, and this project uses Git tags for rele
 
 ## [Unreleased]
 
+- No changes yet.
+
+## [0.3.0] - 2026-08-30
+
 ### Removed
 
 - **The entire deprecated compatibility surface.** `Cascade`, `Inventory`, `InventoryBatch`,

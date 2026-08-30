@@ -319,12 +319,16 @@ For historical reference, the original implementation is preserved here:
 
 ## Release Status
 
-`v0.2.0` is the first release that adds a full timed planning layer:
+`v0.3.0` sharpens the execution engine and states what was previously left implicit:
 
-- `TimeAxis`, `TimedSlotSpace`, and timed edges
-- `MovementPlanner` for timeless path planning
-- `ScheduleRequest` and `EarliestArrivalSolver` for timed planning
-- `DemandScheduler` and shipment release policies for order-level promise calculation
+- execution is pure — `execute()` no longer modifies the state it is given
+- `EdgeRuleBase` states whether the declared edge graph constrains movement
+- `MovementResult::trace()` explains why a movement did what it did
+- the deprecated `Cascade` / `Inventory` compatibility surface is gone
+
+`v0.2.0` added the timed planning layer: `TimeAxis`, `TimedSlotSpace` and timed edges,
+`MovementPlanner` for timeless path planning, `ScheduleRequest` and `EarliestArrivalSolver` for
+timed planning, and `DemandScheduler` with shipment release policies for order-level promises.
 
 **The execution engine is stable; the timed and demand-scheduling layer is experimental.** The
 distinction is not a matter of polish — the timed layer is tested and documented — but of
