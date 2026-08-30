@@ -9,6 +9,7 @@ use Nandan108\SlotFlow\Contracts\SlotCodec;
 use Nandan108\SlotFlow\Exceptions\SlotFlowInvalidArgumentException;
 use Nandan108\SlotFlow\Internal\SlotPattern;
 use Nandan108\SlotFlow\Rules\EdgeRule;
+use Nandan108\SlotFlow\Rules\EdgeRuleBase;
 use Nandan108\SlotFlow\Rules\RuleSet;
 use Nandan108\SlotFlow\Rules\SlotRule;
 use Nandan108\SlotFlow\Rules\SlotRuleBase;
@@ -100,6 +101,17 @@ final class SlotSpace
      * @psalm-var array<TSlotKey, array<TSlotKey, MovementEdge>>
      */
     private array $outgoingEdgeByOriginSlot = [];
+
+    /**
+     * Whether a movement step is limited to the declared edges.
+     *
+     * Tightening is one-way: once a caller has stated {@see EdgeRuleBase::None}, a later
+     * `edgeRules()` call that does not repeat it cannot reopen the topology. A rule list assembled
+     * from several independent contributors is exactly the case this enum exists for, and a
+     * contributor appending rules under the default must not silently un-enforce what another
+     * one declared.
+     */
+    private EdgeRuleBase $edgeRuleBase = EdgeRuleBase::All;
 
     /**
      * Define one untimed slot space from dimensions.
@@ -374,10 +386,23 @@ final class SlotSpace
      *
      * Edge rules are stored at origin slot level, to be lazily evaluated into actual edges when needed.
      *
+     * Whether the declared graph *constrains* movement is stated by `$base`, not inferred from the
+     * presence of rules — see {@see EdgeRuleBase}. Under the default the rules label, annotate and
+     * deny without limiting what a `move()` may traverse, which is what a space declaring no
+     * topology has always meant; under {@see EdgeRuleBase::None} the declared graph is
+     * authoritative and a step over an undeclared pair finds no edge.
+     *
      * @param RuleSet<EdgeRule>|list<EdgeRule|RuleSet<EdgeRule>> $rules
+     * @param EdgeRuleBase                                       $base  whether movement is limited
+     *                                                                  to the declared edges;
+     *                                                                  tightening is one-way
      */
-    public function edgeRules(RuleSet | array $rules): self
+    public function edgeRules(RuleSet | array $rules, EdgeRuleBase $base = EdgeRuleBase::All): self
     {
+        if (EdgeRuleBase::None === $base) {
+            $this->edgeRuleBase = EdgeRuleBase::None;
+        }
+
         /** @psalm-suppress UnnecessaryVarAnnotation */
         /** @var list<EdgeRule> $rules */
         $rules = (is_array($rules))
@@ -781,17 +806,37 @@ final class SlotSpace
      * @psalm-param TSlotPattern $fromPattern Specified values match with equality, wildcard/missing match with anything
      * @psalm-param TSlotPattern $toPattern  Specified values are kept, wildcard/missing are filled in from the $fromPattern match
      *
+     * Under {@see EdgeRuleBase::None} the pairs the patterns express are intersected with the
+     * declared graph, and the *declared* edge is returned rather than a freshly built one — so a
+     * movement step sees the label and metadata its edge rule carries, exactly as a labeled step
+     * does. Boundary movements into or out of the nil slot are never constrained.
+     *
      * @return MovementEdge[]
      */
     public function edgesBetween(array | string | null $fromPattern, array | string | null $toPattern): array
     {
+        $enforced = EdgeRuleBase::None === $this->edgeRuleBase;
         $edges = [];
         $toPartials = $this->expandSlotPattern($toPattern);
+
         foreach (SlotPattern::from($fromPattern, $this)->expand() as $fromSlot) {
+            // A step out of nil creates, and no topology rule describes the outside of the space.
+            $declared = ($enforced && !$fromSlot->isNil()) ? $this->getEdgesFrom($fromSlot) : null;
+
             foreach ($toPartials as $toPartial) {
                 foreach ($fromSlot->with($toPartial) as $toSlot) {
-                    if ($fromSlot !== $toSlot) {
+                    if ($fromSlot === $toSlot) {
+                        continue;
+                    }
+
+                    // ...and a step into nil destroys, which is the same boundary.
+                    if (null === $declared || $toSlot->isNil()) {
                         $edges[] = new MovementEdge($fromSlot, $toSlot);
+                        continue;
+                    }
+
+                    if (isset($declared[$toSlot->key])) {
+                        $edges[] = $declared[$toSlot->key];
                     }
                 }
             }

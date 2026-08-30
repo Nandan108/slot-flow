@@ -31,7 +31,8 @@ SlotFlow is intentionally not a full ERP, OMS, or WMS. It is the lower-level eng
 - A `Slot` is one concrete state such as `wh1.FP.fs`.
   - The special `nil` slot represents outside-of-space flow: both source, sink, and effectively `/dev/null`.
 - A `SlotSpace` is the finite universe of valid slots generated from named dimensions.
-- An `Edge` is an allowed movement between two slots.
+- An `Edge` is a movement between two slots. Whether the edges you declare *limit* what a flow may
+  traverse is your choice, stated with `EdgeRuleBase` — see [Constraining the topology](#constraining-the-topology).
 - A `Flow` is an ordered movement definition that defines how movement is attempted.
 - A `QuantityState` stores the current quantity distribution for one subject across the slot space.
 - `MovementEngine` executes a requested quantity against current state and returns movement events plus any remainder.
@@ -160,6 +161,39 @@ This makes backordering an explicit, deterministic part of the flow.
 The same policy also supports alternatives such as `'wh1|wh2'`, because priority entries are resolved through the configured slot codec before ranking edges. All values matched by the same entry share the same priority tier.
 
 Registered flow names pair especially well with parameterized templates: you define the flow once on the `SlotSpace`, then execute it by name with different `params` depending on the request.
+
+## Constraining the topology
+
+By default a movement step may traverse any pair of slots its `from` and `to` patterns can express.
+That is what a space declaring no edge rules has always meant, and it is usually what you want while
+the model is still moving.
+
+Where the legal transitions are part of the domain rather than an implementation detail, say so:
+
+```php
+use Nandan108\SlotFlow\Rules\EdgeRule;
+use Nandan108\SlotFlow\Rules\EdgeRuleBase;
+
+$space->edgeRules([
+    EdgeRule::allowLabeled('reserve', ['stt' => 'fs'], ['stt' => 'res']),
+    EdgeRule::allow(['stt' => 'res'], ['stt' => 'sd']),
+], EdgeRuleBase::None);
+```
+
+Under `EdgeRuleBase::None` the declared graph is authoritative: a `move()` over a pair you never
+declared finds no edge and moves nothing, rather than quietly succeeding. An unsanctioned path
+becomes a refusal at execution instead of a movement someone has to notice afterwards.
+
+Two things stay true whichever base you choose:
+
+- **Boundary movements are never constrained.** `create()` and `destroy()` cross the `nil` slot,
+  which is the outside of the space rather than a member of it, so no topology rule describes it.
+- **Tightening is one-way.** Once `EdgeRuleBase::None` has been stated, a later `edgeRules()` call
+  that does not repeat it cannot reopen the topology — so a rule list assembled from several
+  independent contributors cannot be silently un-enforced by one of them.
+
+Under `None` a movement step also receives the *declared* edge, so it sees the label and metadata
+its rule carries, exactly as `stepByLabeledEdges()` does.
 
 ## Delivery Promises And Order Release
 

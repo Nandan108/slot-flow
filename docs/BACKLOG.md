@@ -4,16 +4,7 @@
 - [013] Add non-greedy engine strategy and new fixture and example for shortest path (Dijkstra)
 - [014] Add `$result->trace()` to return a decision trace demonstrating how result was produced.
         E.g. `[['step' => 1,'candidates' => [...],'afterFilters' => [...],'afterOrdering' => [...],'selected' => [...],'appliedQuantity' => ...], ['step' => 2, ...]]`
-- [018] **Decide what `edgeRules()` means, and make one edge graph authoritative.** There are two
-        today: `edgesBetween()` derives edges from patterns and ignores the declared rules, while
-        `getEdgesFrom()` / `edgesByLabels()` honour them. `Flow::move()` resolves through the first,
-        so a `move()` executes edges the rules forbid; `stepByLabeledEdges()` and the timed
-        expansion resolve through the second. `EarliestArrivalSolver` reads *both* in one run, so a
-        space whose two graphs disagree makes it internally inconsistent. Either `edgesBetween()`
-        intersects the declared graph (what the README's "an Edge is an allowed movement" already
-        promises), or edge rules are documented as planner metadata only. Breaking either way.
-- [019] Extract an `EdgeGraph` owning topology, **after [018]**. Doing it first only relocates the
-        contradiction into two classes instead of resolving it.
+- [019] Extract an `EdgeGraph` owning topology, now that [018] has settled the semantics.
 - [020] Finish the temporal severance: remove `SlotSpace::defineTimed()` and `$space->timeAxis` so
         `SlotSpace.php` comes off the `tests/BoundaryTest.php` allow-list. Needs `ScheduleRequest` to
         take a `TemporalContext` explicitly, `DemandScheduleRequest` a nullable one (it deliberately
@@ -49,4 +40,9 @@
         override — `Flow` has no solver property and `execute()` has no solver argument. Reopen as
         a TODO if either is still wanted.)*
 - [017] Implement EarliestArrivalSolver
+- [018] Decide what `edgeRules()` means, and make one edge graph authoritative. Settled as an
+        opt-in base (`EdgeRuleBase::All|None`), mirroring `SlotRuleBase`: enforcement is stated, not
+        inferred from the presence of rules. Always-enforce was not viable — `getEdgesFrom()` is
+        empty when nothing is declared, so it would have silently stopped every flow in any space
+        without edge rules, including every one of InvFlux's.
 

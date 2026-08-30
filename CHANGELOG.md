@@ -19,6 +19,15 @@ The format is based on Keep a Changelog, and this project uses Git tags for rele
 
 ### Added
 
+- `Rules\EdgeRuleBase` — states whether the declared edge graph *constrains* movement, rather than
+  leaving it inferred. Under the default (`All`) edge rules label, annotate and deny without limiting
+  what a `move()` may traverse, which is what a space declaring no topology has always meant. Under
+  `None` the declared graph is authoritative: a step over an undeclared pair finds no edge and moves
+  nothing, and the step receives the declared edge, so it sees the label and metadata its rule
+  carries. Boundary movements across `nil` (`create()`, `destroy()`) are never constrained, and
+  tightening is one-way so an assembled rule list cannot be silently un-enforced.
+  Closes the gap where `move()` executed edges `edgeRules()` forbade while labeled steps and the
+  timed expansion honoured them.
 - `MovementResult::applyTo(QuantityState): QuantityState` — the state a movement produces, as a copy.
 - `QuantityState::withDelta(Slot, int|float): static` — the immutable spelling of `add()`.
 - `Time\TemporalContext` — one value carrying the time axis, duration resolver and dispatch calendar,
