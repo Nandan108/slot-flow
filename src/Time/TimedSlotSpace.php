@@ -13,6 +13,11 @@ use Nandan108\SlotFlow\SlotSpace;
 /**
  * Time-expanded view of a base SlotSpace.
  *
+ * @experimental The timed and demand-scheduling layer is unproven against a real workload:
+ *               tested and documented, but not yet validated by a production consumer, so
+ *               its shape is expected to change once one exists. Pin an exact version if
+ *               you build on it. The execution engine carries no such caveat.
+ *
  * @api
  */
 final class TimedSlotSpace
@@ -31,12 +36,10 @@ final class TimedSlotSpace
         ?callable $durationResolver = null,
         DispatchCalendarInterface | callable | null $dispatchCalendar = null,
     ) {
-        $this->durationResolver = null === $durationResolver
-            ? null
-            : self::normalizeDurationResolver($durationResolver);
-        $this->dispatchCalendar = null === $dispatchCalendar
-            ? null
-            : self::normalizeDispatchCalendar($dispatchCalendar);
+        $this->durationResolver = TemporalContext::normalizeDurationResolver(
+            null === $durationResolver ? null : \Closure::fromCallable($durationResolver),
+        );
+        $this->dispatchCalendar = TemporalContext::normalizeDispatchCalendar($dispatchCalendar);
     }
 
     /**
@@ -231,66 +234,6 @@ final class TimedSlotSpace
         }
 
         return $dispatchTime;
-    }
-
-    private static function normalizeDurationResolver(callable $durationResolver): TimedDurationResolverInterface
-    {
-        return new class(\Closure::fromCallable($durationResolver)) implements TimedDurationResolverInterface {
-            private readonly \Closure $resolver;
-
-            public function __construct(\Closure $resolver)
-            {
-                $this->resolver = $resolver;
-            }
-
-            #[\Override]
-            public function resolve(MovementEdge $edge, TimedDurationContext $context): int | string
-            {
-                /** @psalm-var mixed $duration */
-                $duration = ($this->resolver)($edge, $context);
-
-                if (is_int($duration) || is_string($duration)) {
-                    return $duration;
-                }
-
-                throw new SlotFlowInvalidArgumentException(
-                    'Timed movement edge duration must be an int or time expression string.',
-                    ['edge' => (string) $edge, 'duration' => $duration],
-                );
-            }
-        };
-    }
-
-    private static function normalizeDispatchCalendar(callable | DispatchCalendarInterface $dispatchCalendar): DispatchCalendarInterface
-    {
-        if ($dispatchCalendar instanceof DispatchCalendarInterface) {
-            return $dispatchCalendar;
-        }
-
-        return new class(\Closure::fromCallable($dispatchCalendar)) implements DispatchCalendarInterface {
-            private readonly \Closure $resolver;
-
-            public function __construct(\Closure $resolver)
-            {
-                $this->resolver = $resolver;
-            }
-
-            #[\Override]
-            public function dispatchTime(MovementEdge $edge, TimedDurationContext $context): int
-            {
-                /** @psalm-var mixed $dispatchTime */
-                $dispatchTime = ($this->resolver)($edge, $context);
-
-                if (is_int($dispatchTime)) {
-                    return $dispatchTime;
-                }
-
-                throw new SlotFlowInvalidArgumentException(
-                    'Dispatch calendar must resolve to an integer time index.',
-                    ['edge' => (string) $edge, 'dispatch_time' => $dispatchTime],
-                );
-            }
-        };
     }
 
     private function defaultDurationValue(MovementEdge $edge): int | string

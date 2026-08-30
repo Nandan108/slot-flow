@@ -10,6 +10,11 @@ use Nandan108\SlotFlow\Solvers\GreedyPlanSolver;
 /**
  * Builds timeless movement plans via a pluggable solver.
  *
+ * @experimental The timed and demand-scheduling layer is unproven against a real workload:
+ *               tested and documented, but not yet validated by a production consumer, so
+ *               its shape is expected to change once one exists. Pin an exact version if
+ *               you build on it. The execution engine carries no such caveat.
+ *
  * @api
  */
 final class MovementPlanner

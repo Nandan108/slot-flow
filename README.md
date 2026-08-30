@@ -163,6 +163,12 @@ Registered flow names pair especially well with parameterized templates: you def
 
 ## Delivery Promises And Order Release
 
+> **Experimental.** Everything in this section — the timed slot space, the planners, and demand
+> scheduling — is unproven against a real workload. It is tested and documented, but no production
+> consumer has yet exercised it, so its shapes are expected to change once one does. Treat it as a
+> sketch of a direction rather than a settled contract, and pin an exact version if you build on it.
+> The execution engine described above carries no such caveat.
+
 SlotFlow can also plan timed delivery promises.
 
 - `ScheduleRequest` and `EarliestArrivalSolver` build one timed movement schedule for one subject quantity
@@ -172,13 +178,26 @@ SlotFlow can also plan timed delivery promises.
 
 ## Execution Output
 
-SlotFlow computes movement. It does not persist it.
+SlotFlow computes movement. It does not persist it, and it does not modify the state you hand it.
+
+`MovementEngine::execute()` works against a private copy, so the quantity state you pass in is the
+same afterwards. A result can therefore be held, inspected, compared against an alternative flow, or
+thrown away without leaving anything half-moved — and running the same movement twice against the
+same state gives the same answer both times.
+
+To get the state a movement produces, apply the result:
+
+```php
+$result = (new MovementEngine())->execute($before, $space, 'reserve', 6, 'SKU-123');
+$after  = $result->applyTo($before);   // $before is untouched
+```
 
 It produces explicit, inspectable results that you can store, audit, or replay.
 
 The main result shapes are:
 
 - `MovementResult::deltas()` for net per-slot current-state deltas
+- `MovementResult::applyTo($state)` for the resulting state, as a copy
 - `MovementResult::ledgerEntries($context)` for append-only movement records
 - `MovementSchedule::$steps`, `MovementSchedule::$milestones`, and `MovementSchedule::deltas()` for time-based planning output
 - `DemandSchedule::$lines` and `DemandSchedule::$shipments` for multi-line order promise output
@@ -245,7 +264,15 @@ For historical reference, the original implementation is preserved here:
 - `ScheduleRequest` and `EarliestArrivalSolver` for timed planning
 - `DemandScheduler` and shipment release policies for order-level promise calculation
 
-The core execution engine remains the most mature part of the library. The timed and demand-scheduling APIs are documented and tested, but they should still be expected to evolve as more real-world use cases are applied to them.
+**The execution engine is stable; the timed and demand-scheduling layer is experimental.** The
+distinction is not a matter of polish — the timed layer is tested and documented — but of
+validation: nothing has yet run it in anger, so its API is a hypothesis about what timed planning
+needs, not a report of what it turned out to need.
+
+The dependency between the two runs one way (timed → core) and is enforced by
+`tests/BoundaryTest.php`, so the unvalidated half cannot constrain the validated one, and the core
+can be refactored without keeping a scheduling design honest. `composer test:core` runs the core
+suite alone; `composer test` runs everything.
 
 ## License
 

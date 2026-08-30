@@ -13,6 +13,7 @@ use Nandan108\SlotFlow\Rules\RuleSet;
 use Nandan108\SlotFlow\Rules\SlotRule;
 use Nandan108\SlotFlow\Rules\SlotRuleBase;
 use Nandan108\SlotFlow\Time\DispatchCalendarInterface;
+use Nandan108\SlotFlow\Time\TemporalContext;
 use Nandan108\SlotFlow\Time\TimeAxis;
 use Nandan108\SlotFlow\Time\TimedDurationContext;
 use Nandan108\SlotFlow\Time\TimedDurationResolverInterface;
@@ -53,8 +54,17 @@ final class SlotSpace
 
     public SlotCodec $codec;
     public readonly ?TimeAxis $timeAxis;
-    private ?TimedDurationResolverInterface $durationResolver = null;
-    private ?DispatchCalendarInterface $dispatchCalendar = null;
+
+    /**
+     * The temporal configuration this space is expanded along.
+     *
+     * An untimed space still carries one, with every member null, so consumers never branch on a
+     * null context before asking it a question. It is the space's single temporal dependency:
+     * everything the timed layer needs from a space is reachable through it, and the normalization
+     * of raw callables lives there rather than once per consumer.
+     */
+    private TemporalContext $temporal;
+
     private \Closure $subjectKeyResolver;
 
     /**
@@ -142,10 +152,11 @@ final class SlotSpace
         ?string $codecClass = null,
     ) {
         $this->timeAxis = $timeAxis;
+        $this->temporal = new TemporalContext($timeAxis);
         $this->subjectKeyResolver = \Closure::fromCallable([$this, 'defaultSubjectKey']);
 
         /** @psalm-suppress UnsafeInstantiation */
-        $this->codec = new ($codecClass ?? DefaultSlotKeyCodec::class)($this, $this->timeAxis);
+        $this->codec = new ($codecClass ?? DefaultSlotKeyCodec::class)($this);
 
         $this->codec->initialDimensionValueValidation($dimensions);
 
@@ -169,11 +180,19 @@ final class SlotSpace
     }
 
     /**
+     * Return the temporal configuration this space is expanded along.
+     */
+    public function temporal(): TemporalContext
+    {
+        return $this->temporal;
+    }
+
+    /**
      * Return the configured duration resolver, if any.
      */
     public function getDurationResolver(): ?TimedDurationResolverInterface
     {
-        return $this->durationResolver;
+        return $this->temporal->durationResolver;
     }
 
     /**
@@ -181,7 +200,7 @@ final class SlotSpace
      */
     public function getDispatchCalendar(): ?DispatchCalendarInterface
     {
-        return $this->dispatchCalendar;
+        return $this->temporal->dispatchCalendar;
     }
 
     /**
@@ -191,7 +210,7 @@ final class SlotSpace
      */
     public function setDurationResolver(mixed $durationResolver): self
     {
-        $this->durationResolver = self::normalizeDurationResolver($durationResolver);
+        $this->temporal = $this->temporal->withDurationResolver($durationResolver);
 
         return $this;
     }
@@ -202,7 +221,7 @@ final class SlotSpace
     public function setDispatchCalendar(
         DispatchCalendarInterface | callable | null $dispatchCalendar,
     ): self {
-        $this->dispatchCalendar = self::normalizeDispatchCalendar($dispatchCalendar);
+        $this->temporal = $this->temporal->withDispatchCalendar($dispatchCalendar);
 
         return $this;
     }
@@ -347,79 +366,6 @@ final class SlotSpace
         $this->slotsByPattern = [];
 
         return $this;
-    }
-
-    /**
-     * @psalm-param TimedDurationResolverInterface|TDurationResolverClosure|null $durationResolver
-     */
-    private static function normalizeDurationResolver(mixed $durationResolver): ?TimedDurationResolverInterface
-    {
-        /** @psalm-suppress DocblockTypeContradiction */
-        return match (true) {
-            null === $durationResolver                                  => null,
-            $durationResolver instanceof TimedDurationResolverInterface => $durationResolver,
-            $durationResolver instanceof \Closure                       => new class($durationResolver) implements TimedDurationResolverInterface {
-                private readonly \Closure $resolver;
-
-                public function __construct(\Closure $resolver)
-                {
-                    $this->resolver = $resolver;
-                }
-
-                #[\Override]
-                public function resolve(MovementEdge $edge, TimedDurationContext $context): int | string
-                {
-                    /** @psalm-var mixed $duration */
-                    $duration = ($this->resolver)($edge, $context);
-
-                    if (is_int($duration) || is_string($duration)) {
-                        return $duration;
-                    }
-
-                    throw new SlotFlowInvalidArgumentException(
-                        'Timed movement edge duration must be an int or time expression string.',
-                        ['edge' => (string) $edge, 'duration' => $duration],
-                    );
-                }
-            },
-            default                                                     => throw new SlotFlowInvalidArgumentException(
-                'Timed duration resolver must be a Closure or TimedDurationResolverInterface instance.',
-                ['duration_resolver' => $durationResolver],
-            ),
-        };
-    }
-
-    private static function normalizeDispatchCalendar(
-        DispatchCalendarInterface | callable | null $dispatchCalendar,
-    ): ?DispatchCalendarInterface {
-        return match (true) {
-            null === $dispatchCalendar                             => null,
-            $dispatchCalendar instanceof DispatchCalendarInterface => $dispatchCalendar,
-            default                                                => new class(\Closure::fromCallable($dispatchCalendar)) implements DispatchCalendarInterface {
-                private readonly \Closure $resolver;
-
-                public function __construct(\Closure $resolver)
-                {
-                    $this->resolver = $resolver;
-                }
-
-                #[\Override]
-                public function dispatchTime(MovementEdge $edge, TimedDurationContext $context): int
-                {
-                    /** @psalm-var mixed $dispatchTime */
-                    $dispatchTime = ($this->resolver)($edge, $context);
-
-                    if (is_int($dispatchTime)) {
-                        return $dispatchTime;
-                    }
-
-                    throw new SlotFlowInvalidArgumentException(
-                        'Dispatch calendar must resolve to an integer time index.',
-                        ['edge' => (string) $edge, 'dispatch_time' => $dispatchTime],
-                    );
-                }
-            },
-        };
     }
 
     /**

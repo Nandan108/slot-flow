@@ -3,9 +3,26 @@
   <php>
     <server name="COLLISION_TESTING" value="1"/>
   </php>
+  <!--
+    Core and Timed partition the suite: running phpunit with no argument runs both, so `composer
+    test` still covers everything exactly once. The split exists because the timed and demand-
+    scheduling layer is roughly half the suite and has no consumer, so refactoring the execution
+    core against the whole suite means keeping an unvalidated scheduling design honest for no
+    present benefit. `composer test:core` runs the core alone.
+  -->
   <testsuites>
-    <testsuite name="Default">
+    <testsuite name="Core">
       <directory>tests</directory>
+      <exclude>tests/TimeLayerTest.php</exclude>
+      <exclude>tests/DemandSchedulerTest.php</exclude>
+      <exclude>tests/DeliveryPromiseExampleTest.php</exclude>
+      <exclude>tests/MovementPlannerTest.php</exclude>
+    </testsuite>
+    <testsuite name="Timed">
+      <file>tests/TimeLayerTest.php</file>
+      <file>tests/DemandSchedulerTest.php</file>
+      <file>tests/DeliveryPromiseExampleTest.php</file>
+      <file>tests/MovementPlannerTest.php</file>
     </testsuite>
   </testsuites>
   <coverage includeUncoveredFiles="true" disableCodeCoverageIgnore="true"/>

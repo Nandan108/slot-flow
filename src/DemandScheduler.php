@@ -13,6 +13,11 @@ use Nandan108\SlotFlow\Solvers\EarliestArrivalSolver;
 /**
  * Schedules a multi-line demand by composing per-line schedules and an order release policy.
  *
+ * @experimental The timed and demand-scheduling layer is unproven against a real workload:
+ *               tested and documented, but not yet validated by a production consumer, so
+ *               its shape is expected to change once one exists. Pin an exact version if
+ *               you build on it. The execution engine carries no such caveat.
+ *
  * @api
  */
 final class DemandScheduler

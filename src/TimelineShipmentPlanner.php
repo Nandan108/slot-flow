@@ -14,6 +14,11 @@ use Nandan108\SlotFlow\Results\ScheduledStep;
 /**
  * Builds shipments by walking the arrival timeline, applying consolidation windows and release policies.
  *
+ * @experimental The timed and demand-scheduling layer is unproven against a real workload:
+ *               tested and documented, but not yet validated by a production consumer, so
+ *               its shape is expected to change once one exists. Pin an exact version if
+ *               you build on it. The execution engine carries no such caveat.
+ *
  * @api
  */
 final class TimelineShipmentPlanner implements ShipmentPlannerInterface

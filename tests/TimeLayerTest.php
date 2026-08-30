@@ -193,7 +193,7 @@ final class TimeLayerTest extends TestCase
         TimeAxis::define('day', 10, ['dock' => 2]);
     }
 
-    public function testSlotSpaceCanStoreTimeAxisAndPassItToTheCodec(): void
+    public function testSlotSpaceStoresTimeAxisAndHonoursACustomCodecClass(): void
     {
         $timeAxis = TimeAxis::define('hour', 24, ['shift' => 8, 'day' => 24]);
         $space = SlotSpace::defineTimed(
@@ -206,8 +206,20 @@ final class TimeLayerTest extends TestCase
         );
 
         self::assertSame($timeAxis, $space->timeAxis);
+        self::assertSame($timeAxis, $space->temporal()->axis);
         self::assertInstanceOf(TimeAwareTestCodec::class, $space->codec);
-        self::assertSame($timeAxis, $space->codec->timeAxis);
+    }
+
+    public function testCodecIsConstructedWithoutATimeAxis(): void
+    {
+        // A codec serializes dimension values; time is a separate axis the timed layer expands
+        // along, never a slot dimension. The codec contract stays time-free so the timed layer
+        // cannot reach into it — see tests/BoundaryTest.php.
+        $constructor = (new \ReflectionClass(DefaultSlotKeyCodec::class))->getConstructor();
+
+        self::assertNotNull($constructor);
+        self::assertSame(1, $constructor->getNumberOfParameters());
+        self::assertSame('space', $constructor->getParameters()[0]->getName());
     }
 
     public function testTimeAxisCanFormatHumanKeysWithCustomParts(): void

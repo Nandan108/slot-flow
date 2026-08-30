@@ -6,7 +6,6 @@ namespace Nandan108\SlotFlow\Contracts;
 
 use Nandan108\SlotFlow\Exceptions\SlotFlowInvalidArgumentException;
 use Nandan108\SlotFlow\SlotSpace;
-use Nandan108\SlotFlow\Time\TimeAxis;
 
 /**
  * Defines how slots are serialized, deserialized, and pattern-matched.
@@ -22,9 +21,13 @@ interface SlotCodec
 {
     /**
      * Bind the codec instance to one slot space.
+     *
+     * A codec serializes and matches slot keys, which are dimension values only — time is not a
+     * slot dimension, it is a separate axis the timed layer expands the space along. So the codec
+     * contract is deliberately time-free.
      */
     /** @psalm-suppress PossiblyUnusedMethod */
-    public function __construct(SlotSpace $space, ?TimeAxis $timeAxis = null);
+    public function __construct(SlotSpace $space);
 
     /**
      * Return true when the given value should be treated as a match-all wildcard.

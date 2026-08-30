@@ -39,6 +39,8 @@
         "phpdoc": "./vendor/bin/phpdoc -c phpdoc.dist.xml",
         "psalm": "./vendor/bin/psalm",
         "test": "./vendor/bin/phpunit",
+        "test:core": "./vendor/bin/phpunit --testsuite Core",
+        "test:timed": "./vendor/bin/phpunit --testsuite Timed",
         "testAndCover": "./vendor/bin/phpunit --coverage-text --coverage-html coverage"
     },
     "config": {
